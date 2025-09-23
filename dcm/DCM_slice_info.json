@@ -1,0 +1,399 @@
+{
+  "slices": [
+    {
+      "file_name": "0079.dcm",
+      "instance_number": 1,
+      "z_value": 1508.0
+    },
+    {
+      "file_name": "0078.dcm",
+      "instance_number": 2,
+      "z_value": 1503.0
+    },
+    {
+      "file_name": "0077.dcm",
+      "instance_number": 3,
+      "z_value": 1498.0
+    },
+    {
+      "file_name": "0076.dcm",
+      "instance_number": 4,
+      "z_value": 1493.0
+    },
+    {
+      "file_name": "0075.dcm",
+      "instance_number": 5,
+      "z_value": 1488.0
+    },
+    {
+      "file_name": "0074.dcm",
+      "instance_number": 6,
+      "z_value": 1483.0
+    },
+    {
+      "file_name": "0073.dcm",
+      "instance_number": 7,
+      "z_value": 1478.0
+    },
+    {
+      "file_name": "0072.dcm",
+      "instance_number": 8,
+      "z_value": 1473.0
+    },
+    {
+      "file_name": "0071.dcm",
+      "instance_number": 9,
+      "z_value": 1468.0
+    },
+    {
+      "file_name": "0070.dcm",
+      "instance_number": 10,
+      "z_value": 1463.0
+    },
+    {
+      "file_name": "0069.dcm",
+      "instance_number": 11,
+      "z_value": 1458.0
+    },
+    {
+      "file_name": "0068.dcm",
+      "instance_number": 12,
+      "z_value": 1453.0
+    },
+    {
+      "file_name": "0067.dcm",
+      "instance_number": 13,
+      "z_value": 1448.0
+    },
+    {
+      "file_name": "0066.dcm",
+      "instance_number": 14,
+      "z_value": 1443.0
+    },
+    {
+      "file_name": "0065.dcm",
+      "instance_number": 15,
+      "z_value": 1438.0
+    },
+    {
+      "file_name": "0064.dcm",
+      "instance_number": 16,
+      "z_value": 1433.0
+    },
+    {
+      "file_name": "0063.dcm",
+      "instance_number": 17,
+      "z_value": 1428.0
+    },
+    {
+      "file_name": "0062.dcm",
+      "instance_number": 18,
+      "z_value": 1423.0
+    },
+    {
+      "file_name": "0061.dcm",
+      "instance_number": 19,
+      "z_value": 1418.0
+    },
+    {
+      "file_name": "0060.dcm",
+      "instance_number": 20,
+      "z_value": 1413.0
+    },
+    {
+      "file_name": "0059.dcm",
+      "instance_number": 21,
+      "z_value": 1408.0
+    },
+    {
+      "file_name": "0058.dcm",
+      "instance_number": 22,
+      "z_value": 1403.0
+    },
+    {
+      "file_name": "0057.dcm",
+      "instance_number": 23,
+      "z_value": 1398.0
+    },
+    {
+      "file_name": "0056.dcm",
+      "instance_number": 24,
+      "z_value": 1393.0
+    },
+    {
+      "file_name": "0055.dcm",
+      "instance_number": 25,
+      "z_value": 1388.0
+    },
+    {
+      "file_name": "0054.dcm",
+      "instance_number": 26,
+      "z_value": 1383.0
+    },
+    {
+      "file_name": "0053.dcm",
+      "instance_number": 27,
+      "z_value": 1378.0
+    },
+    {
+      "file_name": "0052.dcm",
+      "instance_number": 28,
+      "z_value": 1373.0
+    },
+    {
+      "file_name": "0051.dcm",
+      "instance_number": 29,
+      "z_value": 1368.0
+    },
+    {
+      "file_name": "0050.dcm",
+      "instance_number": 30,
+      "z_value": 1363.0
+    },
+    {
+      "file_name": "0049.dcm",
+      "instance_number": 31,
+      "z_value": 1358.0
+    },
+    {
+      "file_name": "0048.dcm",
+      "instance_number": 32,
+      "z_value": 1353.0
+    },
+    {
+      "file_name": "0047.dcm",
+      "instance_number": 33,
+      "z_value": 1348.0
+    },
+    {
+      "file_name": "0046.dcm",
+      "instance_number": 34,
+      "z_value": 1343.0
+    },
+    {
+      "file_name": "0045.dcm",
+      "instance_number": 35,
+      "z_value": 1338.0
+    },
+    {
+      "file_name": "0044.dcm",
+      "instance_number": 36,
+      "z_value": 1333.0
+    },
+    {
+      "file_name": "0043.dcm",
+      "instance_number": 37,
+      "z_value": 1328.0
+    },
+    {
+      "file_name": "0042.dcm",
+      "instance_number": 38,
+      "z_value": 1323.0
+    },
+    {
+      "file_name": "0041.dcm",
+      "instance_number": 39,
+      "z_value": 1318.0
+    },
+    {
+      "file_name": "0040.dcm",
+      "instance_number": 40,
+      "z_value": 1313.0
+    },
+    {
+      "file_name": "0039.dcm",
+      "instance_number": 41,
+      "z_value": 1308.0
+    },
+    {
+      "file_name": "0038.dcm",
+      "instance_number": 42,
+      "z_value": 1303.0
+    },
+    {
+      "file_name": "0037.dcm",
+      "instance_number": 43,
+      "z_value": 1298.0
+    },
+    {
+      "file_name": "0036.dcm",
+      "instance_number": 44,
+      "z_value": 1293.0
+    },
+    {
+      "file_name": "0035.dcm",
+      "instance_number": 45,
+      "z_value": 1288.0
+    },
+    {
+      "file_name": "0034.dcm",
+      "instance_number": 46,
+      "z_value": 1283.0
+    },
+    {
+      "file_name": "0033.dcm",
+      "instance_number": 47,
+      "z_value": 1278.0
+    },
+    {
+      "file_name": "0032.dcm",
+      "instance_number": 48,
+      "z_value": 1273.0
+    },
+    {
+      "file_name": "0031.dcm",
+      "instance_number": 49,
+      "z_value": 1268.0
+    },
+    {
+      "file_name": "0030.dcm",
+      "instance_number": 50,
+      "z_value": 1263.0
+    },
+    {
+      "file_name": "0029.dcm",
+      "instance_number": 51,
+      "z_value": 1258.0
+    },
+    {
+      "file_name": "0028.dcm",
+      "instance_number": 52,
+      "z_value": 1253.0
+    },
+    {
+      "file_name": "0027.dcm",
+      "instance_number": 53,
+      "z_value": 1248.0
+    },
+    {
+      "file_name": "0026.dcm",
+      "instance_number": 54,
+      "z_value": 1243.0
+    },
+    {
+      "file_name": "0025.dcm",
+      "instance_number": 55,
+      "z_value": 1238.0
+    },
+    {
+      "file_name": "0024.dcm",
+      "instance_number": 56,
+      "z_value": 1233.0
+    },
+    {
+      "file_name": "0023.dcm",
+      "instance_number": 57,
+      "z_value": 1228.0
+    },
+    {
+      "file_name": "0022.dcm",
+      "instance_number": 58,
+      "z_value": 1223.0
+    },
+    {
+      "file_name": "0021.dcm",
+      "instance_number": 59,
+      "z_value": 1218.0
+    },
+    {
+      "file_name": "0020.dcm",
+      "instance_number": 60,
+      "z_value": 1213.0
+    },
+    {
+      "file_name": "0019.dcm",
+      "instance_number": 61,
+      "z_value": 1208.0
+    },
+    {
+      "file_name": "0018.dcm",
+      "instance_number": 62,
+      "z_value": 1203.0
+    },
+    {
+      "file_name": "0017.dcm",
+      "instance_number": 63,
+      "z_value": 1198.0
+    },
+    {
+      "file_name": "0016.dcm",
+      "instance_number": 64,
+      "z_value": 1193.0
+    },
+    {
+      "file_name": "0015.dcm",
+      "instance_number": 65,
+      "z_value": 1188.0
+    },
+    {
+      "file_name": "0014.dcm",
+      "instance_number": 66,
+      "z_value": 1183.0
+    },
+    {
+      "file_name": "0013.dcm",
+      "instance_number": 67,
+      "z_value": 1178.0
+    },
+    {
+      "file_name": "0012.dcm",
+      "instance_number": 68,
+      "z_value": 1173.0
+    },
+    {
+      "file_name": "0011.dcm",
+      "instance_number": 69,
+      "z_value": 1168.0
+    },
+    {
+      "file_name": "0010.dcm",
+      "instance_number": 70,
+      "z_value": 1163.0
+    },
+    {
+      "file_name": "0009.dcm",
+      "instance_number": 71,
+      "z_value": 1158.0
+    },
+    {
+      "file_name": "0008.dcm",
+      "instance_number": 72,
+      "z_value": 1153.0
+    },
+    {
+      "file_name": "0007.dcm",
+      "instance_number": 73,
+      "z_value": 1148.0
+    },
+    {
+      "file_name": "0006.dcm",
+      "instance_number": 74,
+      "z_value": 1143.0
+    },
+    {
+      "file_name": "0005.dcm",
+      "instance_number": 75,
+      "z_value": 1138.0
+    },
+    {
+      "file_name": "0004.dcm",
+      "instance_number": 76,
+      "z_value": 1133.0
+    },
+    {
+      "file_name": "0003.dcm",
+      "instance_number": 77,
+      "z_value": 1128.0
+    },
+    {
+      "file_name": "0002.dcm",
+      "instance_number": 78,
+      "z_value": 1123.0
+    },
+    {
+      "file_name": "0001.dcm",
+      "instance_number": 79,
+      "z_value": 1118.0
+    }
+  ]
+}

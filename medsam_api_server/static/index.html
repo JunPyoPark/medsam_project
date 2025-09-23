@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>MedSAM 뷰어 (최종)</title>
+    <style>
+        body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; max-width: 540px; margin: 20px auto; }
+        .hidden { display: none; }
+        #controls { width: 100%; margin-bottom: 10px; }
+        #controls > div { display: flex; align-items: center; gap: 10px; }
+        #sliceSlider { flex-grow: 1; }
+        #canvasContainer { position: relative; border: 1px solid black; min-width: 512px; min-height: 512px; line-height: 0; }
+        #sliceCanvas, #drawCanvas { position: absolute; top: 0; left: 0; }
+        #viewer-buttons { margin-top: 10px; display: flex; gap: 10px; }
+        progress { width: 100%; margin-top: 5px; }
+    </style>
+</head>
+<body>
+    <h1>MedSAM 3D 뷰어 (최종)</h1>
+    <input type="file" id="fileUpload"><button id="submitBtn">업로드</button>
+    <p id="status"></p>
+
+    <div id="viewer" class="hidden">
+        <div id="controls">
+            <div>
+                <label for="sliceSlider">Slice:</label>
+                <input type="range" id="sliceSlider" min="0" max="100" value="0">
+                <span id="sliceLabel">0</span>
+            </div>
+        </div>
+        <div id="canvasContainer">
+            <canvas id="sliceCanvas"></canvas>
+            <canvas id="drawCanvas"></canvas>
+        </div>
+        <div id="viewer-buttons">
+            <button id="saveMaskBtn">현재 마스크 저장</button>
+            <button id="propagateBtn">이 마스크로 3D 전파 시작</button>
+        </div>
+        <progress id="progressBar" max="100" value="0" class="hidden"></progress>
+    </div>
+
+    <script>
+        const fileUpload=document.getElementById("fileUpload"),submitBtn=document.getElementById("submitBtn"),statusEl=document.getElementById("status"),viewerEl=document.getElementById("viewer"),slider=document.getElementById("sliceSlider"),sliceLabel=document.getElementById("sliceLabel"),sliceCanvas=document.getElementById("sliceCanvas"),drawCanvas=document.getElementById("drawCanvas"),saveMaskBtn=document.getElementById("saveMaskBtn"),propagateBtn=document.getElementById("propagateBtn"),progressBar=document.getElementById("progressBar"),canvasContainer=document.getElementById("canvasContainer"),sliceCtx=sliceCanvas.getContext("2d"),drawCtx=drawCanvas.getContext("2d");drawCtx.strokeStyle="rgba(255, 0, 0, 0.7)";drawCtx.lineWidth=2;let currentJobId=null,isDrawing=!1,lastX=0,lastY=0,lastAspectRatio=1;submitBtn.onclick=handleUpload;slider.oninput=()=>updateSliceView(slider.value);saveMaskBtn.onclick=saveCurrentMask;propagateBtn.onclick=startPropagation;drawCanvas.onmousedown=e=>{isDrawing=!0,[lastX,lastY]=[e.offsetX,e.offsetY]};drawCanvas.onmousemove=draw;drawCanvas.onmouseup=()=>isDrawing=!1;drawCanvas.onmouseout=()=>isDrawing=!1;async function handleUpload(){const e=fileUpload.files[0];if(!e){statusEl.textContent="파일을 선택해주세요.";return}const t=new FormData;t.append("file",e);setStatus("파일 처리 중..."),viewerEl.classList.add("hidden"),progressBar.classList.add("hidden");const a=await fetch("/api/v1/jobs",{method:"POST",body:t}),n=await a.json();currentJobId=n.job_id,pollStatus()}async function pollStatus(){const e=await fetch(`/api/v1/jobs/${currentJobId}/status`),t=await e.json();setStatus(t.status),progressBar.value=t.progress;const a=t.status;if("COMPLETED"===a){const e=t.result;viewerEl.classList.remove("hidden"),slider.max=e.num_slices-1,slider.value=0,updateSliceView(0,e.aspect_ratio||1)}else"PROPAGATING"===a?(progressBar.classList.remove("hidden"),setTimeout(pollStatus,500)):"PROPAGATION_COMPLETED"===a?(setStatus("🎉 3D 전파 완료!"),progressBar.value=100,updateSliceView(slider.value)):"PROCESSING"===a&&setTimeout(pollStatus,2e3)}function updateSliceView(e,t){t&&(lastAspectRatio=t);const a=lastAspectRatio;sliceLabel.textContent=e;const n=new Image;n.src=`/api/v1/jobs/${currentJobId}/slices/${e}`,n.onload=()=>{const e=n.height*a;sliceCanvas.width=n.width,sliceCanvas.height=n.height,drawCanvas.width=n.width,drawCanvas.height=n.height,canvasContainer.style.width=`${n.width}px`,canvasContainer.style.height=`${e}px`,sliceCtx.drawImage(n,0,0),loadMaskForSlice(slider.value)}}function loadMaskForSlice(e){drawCtx.clearRect(0,0,drawCanvas.width,drawCanvas.height);const t=new Image;t.src=`/api/v1/jobs/${currentJobId}/masks/${e}`,t.onload=()=>{drawCtx.drawImage(t,0,0)}}function draw(e){if(!isDrawing)return;drawCtx.beginPath(),drawCtx.moveTo(lastX,lastY),drawCtx.lineTo(e.offsetX,e.offsetY),drawCtx.stroke(),[lastX,lastY]=[e.offsetX,e.offsetY]}async function saveCurrentMask(){drawCanvas.toBlob(async e=>{const t=new FormData;t.append("mask_file",e,"mask.png");await fetch(`/api/v1/jobs/${currentJobId}/masks/${slider.value}`,{method:"POST",body:t}),setStatus(`슬라이스 #${slider.value} 마스크 저장됨.`)},"image/png")}async function startPropagation(){setStatus("3D 전파 작업 시작..."),await fetch(`/api/v1/jobs/${currentJobId}/propagate`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({start_slice:parseInt(slider.value)})}),pollStatus()}function setStatus(e){statusEl.textContent=e}
+    </script>
+</body>
+</html>
