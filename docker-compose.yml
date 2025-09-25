@@ -21,6 +21,7 @@ services:
     ports:
       - "8000:8000"
     volumes:
+      - ./MedSAM2:/app/MedSAM2
       - ./data:/app/data
       - ./models:/app/models
       - ./temp:/app/temp
@@ -56,6 +57,7 @@ services:
       dockerfile: medsam_api_server/Dockerfile
     container_name: medsam2_worker
     volumes:
+      - ./MedSAM2:/app/MedSAM2
       - ./data:/app/data
       - ./models:/app/models
       - ./temp:/app/temp
@@ -88,6 +90,8 @@ services:
     container_name: medsam2_monitor
     ports:
       - "5556:5555"
+    volumes:
+      - ./MedSAM2:/app/MedSAM2
     environment:
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/1
