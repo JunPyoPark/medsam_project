@@ -6,4 +6,24 @@ numpy>=1.24,<3.0
 nibabel>=5.2,<6.0
 scipy>=1.11,<2.0
 python-multipart>=0.0.7,<1.0
-pydantic>=2.6,<3.0 
+pydantic>=2.6,<3.0
+
+# MedSAM2 관련 의존성
+opencv-python>=4.8.0
+matplotlib>=3.7.0
+scikit-image>=0.21.0
+SimpleITK>=2.3.0
+Pillow>=10.0.0
+tqdm>=4.65.0
+pandas>=2.0.0
+
+# GPU 모니터링 및 관리
+psutil>=5.9.0
+GPUtil>=1.4.0
+pynvml>=11.5.0
+
+# HTTP 클라이언트 (헬스체크용)
+httpx>=0.25.0
+
+# Celery 모니터링
+flower>=2.0.0 

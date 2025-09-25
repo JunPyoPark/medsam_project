@@ -1,0 +1,105 @@
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: medsam2_redis
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: .
+      dockerfile: medsam_api_server/Dockerfile
+    container_name: medsam2_api
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+      - ./models:/app/models
+      - ./temp:/app/temp
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/1
+      - DATA_ROOT=/app/data
+      - MODEL_ROOT=/app/models
+      - TEMP_ROOT=/app/temp
+      - GPU_MEMORY_LIMIT=0.8  # GPU 메모리 사용량 제한 (80%)
+      - MAX_CONCURRENT_JOBS=2  # 동시 처리 작업 수 제한
+      - NVIDIA_VISIBLE_DEVICES=all
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: .
+      dockerfile: medsam_api_server/Dockerfile
+    container_name: medsam2_worker
+    volumes:
+      - ./data:/app/data
+      - ./models:/app/models
+      - ./temp:/app/temp
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/1
+      - DATA_ROOT=/app/data
+      - MODEL_ROOT=/app/models
+      - TEMP_ROOT=/app/temp
+      - GPU_MEMORY_LIMIT=0.8
+      - C_FORCE_ROOT=1
+      - NVIDIA_VISIBLE_DEVICES=all
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    depends_on:
+      redis:
+        condition: service_healthy
+    command: celery -A medsam_api_server.celery_app:celery_app worker --loglevel=info --concurrency=1
+    restart: unless-stopped
+
+  monitor:
+    build:
+      context: .
+      dockerfile: medsam_api_server/Dockerfile
+    container_name: medsam2_monitor
+    ports:
+      - "5556:5555"
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/1
+    depends_on:
+      redis:
+        condition: service_healthy
+    command: celery -A medsam_api_server.celery_app:celery_app flower --port=5555
+    restart: unless-stopped
+
+volumes:
+  redis_data:
+
+networks:
+  default:
+    name: medsam2_network 

@@ -1,181 +1,324 @@
-import os
-import json
-import uuid
-from typing import Dict, Tuple
+"""
+MedSAM2 분할 작업
 
-import numpy as np
-import nibabel as nib
-from celery import states
-from celery.utils.log import get_task_logger
-import redis
+Celery를 사용한 비동기 GPU 작업 처리
+"""
+
+import os
+import time
+import logging
+import traceback
+from typing import Dict, Any, Optional
+from celery import current_task
+from celery.exceptions import Retry
 
 from medsam_api_server.celery_app import celery_app
+from medsam_api_server.core.inference_engine import get_inference_engine
+from medsam_api_server.core.gpu_manager import get_gpu_manager
+
+logger = logging.getLogger(__name__)
 
 
-LOGGER = get_task_logger(__name__)
-REDIS_URL = os.getenv("CELERY_RESULT_BACKEND", "redis://localhost:6379/1")
-redis_client = redis.Redis.from_url(REDIS_URL)
-
-DATA_ROOT = os.getenv("DATA_ROOT", "/home/junpyo/projects/medsam_project/data")
-
-
-def _job_dir(job_id: str) -> str:
-    return os.path.join(DATA_ROOT, job_id)
-
-
-def _volume_path(job_id: str) -> str:
-    return os.path.join(_job_dir(job_id), "volume.nii.gz")
-
-
-def _slice_mask_path(job_id: str, slice_index: int) -> str:
-    return os.path.join(_job_dir(job_id), f"slice_{slice_index:04d}_mask.npy")
-
-
-def _result_path(job_id: str) -> str:
-    return os.path.join(_job_dir(job_id), "result.nii.gz")
-
-
-def _status_key(job_id: str, task_kind: str) -> str:
-    return f"medsam:{job_id}:{task_kind}:status"
-
-
-def _progress_key(job_id: str) -> str:
-    return f"medsam:{job_id}:propagation:progress"
-
-
-def _ensure_dirs(path: str) -> None:
-    os.makedirs(path, exist_ok=True)
-
-
-def _load_volume(job_id: str) -> Tuple[np.ndarray, nib.Nifti1Image]:
-    vol_path = _volume_path(job_id)
-    img = nib.load(vol_path)
-    data = img.get_fdata().astype(np.float32)
-    return data, img
-
-
-def _save_slice_mask(job_id: str, slice_index: int, mask: np.ndarray) -> str:
-    mask = (mask > 0).astype(np.uint8)
-    out_path = _slice_mask_path(job_id, slice_index)
-    np.save(out_path, mask)
-    return out_path
-
-
-@celery_app.task(bind=True, name="run_2d_segmentation")
-def run_2d_segmentation(self, job_id: str, slice_index: int, box_prompt: Dict[str, int]):
+@celery_app.task(bind=True, name="generate_initial_mask")
+def generate_initial_mask_task(
+    self,
+    job_id: str,
+    volume_path: str,
+    slice_index: int,
+    bounding_box: list,
+    window_level: Optional[list] = None
+) -> Dict[str, Any]:
     """
-    Placeholder 2D segmentation: threshold pixels within bbox to create a simple mask.
-
-    box_prompt: {"x1": int, "y1": int, "x2": int, "y2": int}
+    2D 초기 마스크 생성 작업
+    
+    Args:
+        job_id: 작업 ID
+        volume_path: NIfTI 파일 경로
+        slice_index: 대상 슬라이스 인덱스
+        bounding_box: [x1, y1, x2, y2] 좌표
+        window_level: [window, level] 윈도우 레벨
+        
+    Returns:
+        Dict containing task result
     """
-    task_kind = "segment2d"
+    logger.info(f"Starting initial mask generation task for job {job_id}")
+    
     try:
-        redis_client.set(_status_key(job_id, task_kind), json.dumps({"status": "STARTED"}))
-        volume, img = _load_volume(job_id)
-        if slice_index < 0 or slice_index >= volume.shape[2]:
-            raise ValueError("slice_index out of range")
-
-        x1 = int(min(box_prompt["x1"], box_prompt["x2"]))
-        y1 = int(min(box_prompt["y1"], box_prompt["y2"]))
-        x2 = int(max(box_prompt["x1"], box_prompt["x2"]))
-        y2 = int(max(box_prompt["y1"], box_prompt["y2"]))
-
-        slice_img = volume[:, :, slice_index]
-        h, w = slice_img.shape
-        x1 = max(0, min(x1, w - 1))
-        x2 = max(0, min(x2, w - 1))
-        y1 = max(0, min(y1, h - 1))
-        y2 = max(0, min(y2, h - 1))
-
-        roi = slice_img[y1:y2 + 1, x1:x2 + 1]
-        if roi.size == 0:
-            mask2d = np.zeros_like(slice_img, dtype=np.uint8)
-        else:
-            thresh = float(np.percentile(roi, 75))
-            mask2d = (slice_img >= thresh).astype(np.uint8)
-            # Keep only connected region overlapping with bbox center (simple heuristic)
-            cy = (y1 + y2) // 2
-            cx = (x1 + x2) // 2
-            seed = np.zeros_like(mask2d, dtype=bool)
-            seed[cy, cx] = True
-            from scipy.ndimage import binary_dilation
-            region = seed.copy()
-            for _ in range(40):
-                region = binary_dilation(region)
-                region &= mask2d.astype(bool)
-            mask2d = region.astype(np.uint8)
-
-        out_path = _save_slice_mask(job_id, slice_index, mask2d)
-        redis_client.set(
-            _status_key(job_id, task_kind),
-            json.dumps({
-                "status": "COMPLETED",
-                "slice_index": slice_index,
-                "mask_path": out_path,
-            }),
+        # 작업 상태 업데이트
+        current_task.update_state(
+            state="PROCESSING",
+            meta={
+                "job_id": job_id,
+                "task_type": "initial_mask",
+                "progress": 0,
+                "current_operation": "Initializing..."
+            }
         )
-        return {"mask_path": out_path}
+        
+        # GPU 자원 확인
+        gpu_manager = get_gpu_manager()
+        if not gpu_manager.can_accept_job("initial_mask"):
+            raise RuntimeError("Resources not available")
+        
+        # 진행률 업데이트
+        current_task.update_state(
+            state="PROCESSING",
+            meta={
+                "job_id": job_id,
+                "task_type": "initial_mask",
+                "progress": 20,
+                "current_operation": "Loading model..."
+            }
+        )
+        
+        # 추론 엔진 실행
+        inference_engine = get_inference_engine()
+        
+        current_task.update_state(
+            state="PROCESSING",
+            meta={
+                "job_id": job_id,
+                "task_type": "initial_mask",
+                "progress": 50,
+                "current_operation": "Running inference..."
+            }
+        )
+        
+        start_time = time.time()
+        result = inference_engine.generate_initial_mask(
+            job_id=job_id,
+            volume_path=volume_path,
+            slice_index=slice_index,
+            bounding_box=bounding_box,
+            window_level=window_level
+        )
+        processing_time = time.time() - start_time
+        
+        # 최종 결과
+        final_result = {
+            "job_id": job_id,
+            "task_type": "initial_mask",
+            "status": "completed",
+            "processing_time": processing_time,
+            "result": result
+        }
+        
+        logger.info(f"Initial mask generation completed for job {job_id} in {processing_time:.2f}s")
+        return final_result
+        
     except Exception as e:
-        LOGGER.exception("run_2d_segmentation failed")
-        redis_client.set(_status_key(job_id, task_kind), json.dumps({"status": "FAILED", "error": str(e)}))
-        self.update_state(state=states.FAILURE, meta={"exc": str(e)})
+        error_msg = f"Initial mask generation failed for job {job_id}: {str(e)}"
+        logger.error(error_msg)
+        logger.error(traceback.format_exc())
+        
+        # Celery 표준 방식으로 실패 처리
+        self.update_state(
+            state="FAILURE",
+            meta={
+                "job_id": job_id,
+                "task_type": "initial_mask",
+                "error": str(e),
+                "exc_type": type(e).__name__,
+                "traceback": traceback.format_exc()
+            }
+        )
+        
+        # 예외를 다시 발생시켜 Celery가 처리하도록 함
         raise
 
 
-@celery_app.task(bind=True, name="run_3d_propagation")
-def run_3d_propagation(self, job_id: str, start_slice: int, end_slice: int, initial_mask_slice_index: int):
+@celery_app.task(bind=True, name="propagate_3d_mask")
+def propagate_3d_mask_task(
+    self,
+    job_id: str,
+    volume_path: str,
+    reference_slice: int,
+    start_slice: int,
+    end_slice: int,
+    reference_mask_b64: str
+) -> Dict[str, Any]:
     """
-    Placeholder 3D propagation: fill between slices by simple morphological interpolation and thresholding.
-    Reads the previously saved 2D mask for initial_mask_slice_index.
+    3D 마스크 전파 작업
+    
+    Args:
+        job_id: 작업 ID
+        volume_path: NIfTI 파일 경로
+        reference_slice: 참조 슬라이스 인덱스
+        start_slice: 시작 슬라이스 인덱스
+        end_slice: 끝 슬라이스 인덱스
+        reference_mask_b64: Base64 인코딩된 참조 마스크
+        
+    Returns:
+        Dict containing task result
     """
+    logger.info(f"Starting 3D propagation task for job {job_id}")
+    
     try:
-        volume, img = _load_volume(job_id)
-        z = volume.shape[2]
-        start = max(0, min(start_slice, z - 1))
-        end = max(0, min(end_slice, z - 1))
-        if start > end:
-            start, end = end, start
-
-        init_mask_path = _slice_mask_path(job_id, initial_mask_slice_index)
-        if not os.path.exists(init_mask_path):
-            raise FileNotFoundError("Initial 2D mask not found. Run 2D segmentation first.")
-        init_mask = np.load(init_mask_path).astype(bool)
-
-        total = (end - start + 1)
-        redis_client.set(_progress_key(job_id), json.dumps({"status": "STARTED", "progress": 0}))
-
-        result_mask = np.zeros_like(volume, dtype=np.uint8)
-        result_mask[:, :, initial_mask_slice_index] = init_mask.astype(np.uint8)
-
-        # Simple forward/backward propagation using threshold guidance
-        slice_indices = list(range(initial_mask_slice_index - 1, start - 1, -1)) + list(range(initial_mask_slice_index + 1, end + 1))
-        processed = 1
-        for si in slice_indices:
-            base = volume[:, :, si]
-            # Adaptive threshold guided by initial mask intensity stats
-            masked_vals = volume[:, :, initial_mask_slice_index][init_mask]
-            if masked_vals.size == 0:
-                thr = float(np.percentile(base, 80))
-            else:
-                mu = float(np.mean(masked_vals))
-                thr = max(mu * 0.8, float(np.percentile(base, 70)))
-            cand = (base >= thr)
-            # Smooth and keep largest connected region nearby center of previous mask
-            from scipy.ndimage import binary_opening, binary_closing
-            sm = binary_closing(binary_opening(cand, iterations=1), iterations=1)
-            result_mask[:, :, si] = sm.astype(np.uint8)
-            processed += 1
-            prog = int(processed / total * 100)
-            redis_client.set(_progress_key(job_id), json.dumps({"status": "PROCESSING", "progress": prog}))
-
-        # Save as NIfTI
-        out_img = nib.Nifti1Image(result_mask.astype(np.uint8), affine=img.affine, header=img.header)
-        out_path = _result_path(job_id)
-        nib.save(out_img, out_path)
-        redis_client.set(_progress_key(job_id), json.dumps({"status": "COMPLETED", "progress": 100, "result_path": out_path}))
-        return {"result_path": out_path}
+        # 작업 상태 업데이트
+        current_task.update_state(
+            state="PROCESSING",
+            meta={
+                "job_id": job_id,
+                "task_type": "propagation",
+                "progress": 0,
+                "current_operation": "Initializing 3D propagation..."
+            }
+        )
+        
+        # GPU 자원 확인
+        gpu_manager = get_gpu_manager()
+        if not gpu_manager.can_accept_job("propagation"):
+            raise RuntimeError("Resources not available")
+        
+        # 진행률 콜백 함수
+        def progress_callback(progress: float, operation: str):
+            current_task.update_state(
+                state="PROCESSING",
+                meta={
+                    "job_id": job_id,
+                    "task_type": "propagation",
+                    "progress": min(progress, 95),  # 최대 95%까지 (마지막 5%는 후처리용)
+                    "current_operation": operation
+                }
+            )
+        
+        # 진행률 업데이트
+        current_task.update_state(
+            state="PROCESSING",
+            meta={
+                "job_id": job_id,
+                "task_type": "propagation",
+                "progress": 10,
+                "current_operation": "Loading model and data..."
+            }
+        )
+        
+        # 추론 엔진 실행
+        inference_engine = get_inference_engine()
+        
+        start_time = time.time()
+        result = inference_engine.propagate_3d_from_mask(
+            job_id=job_id,
+            volume_path=volume_path,
+            reference_slice=reference_slice,
+            start_slice=start_slice,
+            end_slice=end_slice,
+            reference_mask_b64=reference_mask_b64,
+            progress_callback=progress_callback
+        )
+        processing_time = time.time() - start_time
+        
+        # 최종 후처리
+        current_task.update_state(
+            state="PROCESSING",
+            meta={
+                "job_id": job_id,
+                "task_type": "propagation",
+                "progress": 100,
+                "current_operation": "Finalizing results..."
+            }
+        )
+        
+        # 결과 파일 URL 생성
+        result_file_path = result["result_file_path"]
+        result_url = f"/api/v1/jobs/{job_id}/result"
+        
+        # 최종 결과
+        final_result = {
+            "job_id": job_id,
+            "task_type": "propagation",
+            "status": "completed",
+            "processing_time": processing_time,
+            "result": {
+                "result_file_url": result_url,
+                "result_file_path": result_file_path,  # 내부용
+                "total_slices": result["total_slices"],
+                "processed_slices": result["processed_slices"],
+                "volume_statistics": result["volume_statistics"],
+                "slice_range": result["slice_range"],
+                "reference_slice": result["reference_slice"]
+            }
+        }
+        
+        logger.info(f"3D propagation completed for job {job_id} in {processing_time:.2f}s")
+        return final_result
+        
     except Exception as e:
-        LOGGER.exception("run_3d_propagation failed")
-        redis_client.set(_progress_key(job_id), json.dumps({"status": "FAILED", "error": str(e)}))
-        self.update_state(state=states.FAILURE, meta={"exc": str(e)})
+        error_msg = f"3D propagation failed for job {job_id}: {str(e)}"
+        logger.error(error_msg)
+        logger.error(traceback.format_exc())
+        
+        # Celery 표준 방식으로 실패 처리
+        self.update_state(
+            state="FAILURE",
+            meta={
+                "job_id": job_id,
+                "task_type": "propagation",
+                "error": str(e),
+                "exc_type": type(e).__name__,
+                "traceback": traceback.format_exc()
+            }
+        )
+        
+        # 예외를 다시 발생시켜 Celery가 처리하도록 함
+        raise
+
+
+@celery_app.task(name="cleanup_old_results")
+def cleanup_old_results_task(max_age_hours: int = 24) -> Dict[str, Any]:
+    """
+    오래된 결과 파일 정리 작업
+    
+    Args:
+        max_age_hours: 최대 보관 시간 (시간)
+        
+    Returns:
+        Dict containing cleanup results
+    """
+    logger.info(f"Starting cleanup task for files older than {max_age_hours} hours")
+    
+    try:
+        import glob
+        import time
+        
+        temp_root = os.getenv("TEMP_ROOT", "/app/temp")
+        data_root = os.getenv("DATA_ROOT", "/app/data")
+        
+        current_time = time.time()
+        max_age_seconds = max_age_hours * 3600
+        
+        cleaned_files = []
+        total_size = 0
+        
+        # 임시 파일 정리
+        for pattern in ["*.nii.gz", "*.png", "*.jpg"]:
+            files = glob.glob(os.path.join(temp_root, pattern))
+            for file_path in files:
+                try:
+                    file_age = current_time - os.path.getmtime(file_path)
+                    if file_age > max_age_seconds:
+                        file_size = os.path.getsize(file_path)
+                        os.remove(file_path)
+                        cleaned_files.append(file_path)
+                        total_size += file_size
+                        logger.info(f"Cleaned up file: {file_path}")
+                except Exception as e:
+                    logger.warning(f"Failed to clean file {file_path}: {e}")
+        
+        # GPU 관리자 정리
+        gpu_manager = get_gpu_manager()
+        gpu_manager.cleanup_stale_jobs(max_age_hours)
+        
+        result = {
+            "cleaned_files_count": len(cleaned_files),
+            "total_size_mb": total_size / (1024 * 1024),
+            "cleaned_files": cleaned_files[:10],  # 최대 10개만 표시
+            "max_age_hours": max_age_hours
+        }
+        
+        logger.info(f"Cleanup completed: {len(cleaned_files)} files, {total_size/(1024*1024):.2f} MB")
+        return result
+        
+    except Exception as e:
+        logger.error(f"Cleanup task failed: {e}")
         raise

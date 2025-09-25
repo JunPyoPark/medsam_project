@@ -18,8 +18,8 @@ MedSAM2를 활용한 Human-in-the-Loop(HITL) 3D 의료영상 분할 애플리케
                                            │
                                            ▼
                                    ┌─────────────────┐
-                                   │   Celery Worker │
-                                   │   (AI Processing)│
+                                   │  Celery Worker  │
+                                   │ (AI Processing) │
                                    └─────────────────┘
 ```
 
