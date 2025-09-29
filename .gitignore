@@ -73,3 +73,4 @@ celerybeat.pid
 # Temporary files
 *.tmp
 *.temp
+temp
