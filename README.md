@@ -125,11 +125,11 @@ medsam_project/
 2. "NIfTI (.nii.gz) 업로드"에서 3D 의료영상 파일 선택
 3. "새 작업 시작" 버튼 클릭하여 백엔드에 작업 생성
 
-### 2. 2D 분할 (중간 슬라이스)
+### 2. 2D 분할 (현재 슬라이스)
 1. 슬라이더를 조정하여 원하는 슬라이스로 이동
 2. x1, y1, x2, y2 텍스트 박스에 분할할 영역의 좌표 입력
-3. "중간 슬라이스 2D 분할" 버튼 클릭
-4. 자동 폴링으로 완료까지 대기 (약 3초 간격)
+3. "현재 슬라이스 2D 분할" 버튼 클릭
+4. 자동 폴링으로 완료까지 대기
 5. 완료 시 빨간색 마스크가 이미지에 오버레이됨
 
 ### 3. 3D Propagation
@@ -146,8 +146,8 @@ medsam_project/
 - `GET /api/v1/jobs/{job_id}/result` - 결과 파일 다운로드
 
 ### 분할 작업
-- `POST /api/v1/jobs/{job_id}/segment-2d` - 2D 분할 실행
-- `POST /api/v1/jobs/{job_id}/propagate` - 3D Propagation 실행
+- `POST /api/v1/jobs/{job_id}/initial-mask` - 2D 분할 실행 (초기 마스크 생성)
+- `POST /api/v1/jobs/{job_id}/propagate` - 3D Propagation 실행 (2D 마스크 기반)
 
 ## 🐳 Docker 사용
 

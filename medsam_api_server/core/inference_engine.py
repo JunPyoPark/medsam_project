@@ -117,29 +117,18 @@ class MedSAM2InferenceEngine:
                 # 3. 대상 슬라이스 추출
                 target_slice = volume_data[slice_index]
                 
-                # 4. 이미지 전처리 (MedSAM2 방식)
-                if window_level:
-                    window, level = window_level
-                    min_val = level - window / 2
-                    max_val = level + window / 2
-                    processed_slice = np.clip(target_slice, min_val, max_val)
-                else:
-                    processed_slice = target_slice.copy()
-                
-                # 0-255 정규화
-                processed_slice = (processed_slice - np.min(processed_slice)) / (np.max(processed_slice) - np.min(processed_slice)) * 255.0
-                processed_slice = np.uint8(processed_slice)
-                
                 # 5. Bounding box 검증
-                if not self.processor.validate_bounding_box(bounding_box, processed_slice.shape):
+                if not self.processor.validate_bounding_box(bounding_box, target_slice.shape):
                     raise ValueError(f"Invalid bounding box: {bounding_box}")
                 
                 # 6. MedSAM2 추론 (단일 슬라이스)
+                # 전처리는 _run_single_slice_inference 내부에서 일관되게 처리
                 model = self.model_manager.get_model()
                 mask = self._run_single_slice_inference(
                     model, 
-                    processed_slice, 
-                    bounding_box
+                    target_slice, 
+                    bounding_box,
+                    window_level=window_level
                 )
                 
                 # 7. 결과 인코딩
@@ -222,20 +211,9 @@ class MedSAM2InferenceEngine:
             img_tensor -= self.img_mean
             img_tensor /= self.img_std
             
-            # 7. Bounding box 좌표 변환 (원본 → 리사이즈된 이미지)
+            # 7. 원본 이미지 크기 정보 전달
             original_h, original_w = volume.shape[1], volume.shape[2]
             video_height, video_width = original_h, original_w
-            scale_x = self.image_size / original_w
-            scale_y = self.image_size / original_h
-            
-            scaled_bbox = np.array([
-                bbox[0] * scale_x,  # x_min
-                bbox[1] * scale_y,  # y_min
-                bbox[2] * scale_x,  # x_max
-                bbox[3] * scale_y   # y_max
-            ])
-            
-            logger.info(f"Scaled bbox: {scaled_bbox}")
             
             # 8. 결과 마스크 초기화
             mask_3d = np.zeros(volume.shape, dtype=np.uint8)
@@ -252,7 +230,7 @@ class MedSAM2InferenceEngine:
                     inference_state=inference_state,
                     frame_idx=reference_slice,
                     obj_id=1,
-                    box=scaled_bbox,
+                    box=np.array(bbox), # 원본 bbox 전달
                 )
                 
                 if progress_callback:
@@ -282,7 +260,7 @@ class MedSAM2InferenceEngine:
                     inference_state=inference_state,
                     frame_idx=reference_slice,
                     obj_id=1,
-                    box=scaled_bbox,
+                    box=np.array(bbox), # 원본 bbox 전달
                 )
                 
                 # Backward propagation (참조 → 시작)
@@ -336,20 +314,29 @@ class MedSAM2InferenceEngine:
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
             gc.collect()
-    
-    def _run_single_slice_inference(self, model, image: np.ndarray, bbox: List[int]) -> np.ndarray:
+
+    def _run_single_slice_inference(self, model, image: np.ndarray, bbox: List[int], window_level: Optional[List[float]] = None) -> np.ndarray:
         """단일 슬라이스 Video Predictor 추론 (원본 MedSAM2 방식)"""
         try:
             logger.info(f"Starting single slice inference with bbox: {bbox}")
             
             # 1. 단일 슬라이스를 3D 형태로 변환 (Video Predictor는 3D 입력 필요)
             single_slice_volume = image[np.newaxis, :, :]  # (1, H, W)
-            logger.info(f"Single slice volume shape: {single_slice_volume.shape}")
             
-            # 2. DICOM windowing 적용 (원본 스크립트 방식)
-            volume_clipped = np.clip(single_slice_volume, 
-                                   np.percentile(single_slice_volume, 1), 
-                                   np.percentile(single_slice_volume, 99))
+            # 2. Windowing 적용 (3D 전파와 로직 통일)
+            if window_level:
+                # 사용자 지정 윈도우 레벨 사용
+                window, level = window_level
+                min_val = level - window / 2
+                max_val = level + window / 2
+                volume_clipped = np.clip(single_slice_volume, min_val, max_val)
+                logger.info(f"Applied custom window/level: {window_level}")
+            else:
+                # 기본값: 1-99 percentile clipping (3D 전파와 동일)
+                volume_clipped = np.clip(single_slice_volume, 
+                                       np.percentile(single_slice_volume, 1), 
+                                       np.percentile(single_slice_volume, 99))
+
             volume_normalized = (volume_clipped - np.min(volume_clipped)) / (np.max(volume_clipped) - np.min(volume_clipped)) * 255.0
             volume_uint8 = np.uint8(volume_normalized)
             
@@ -369,19 +356,6 @@ class MedSAM2InferenceEngine:
             original_h, original_w = image.shape
             video_height, video_width = original_h, original_w
             
-            # 6. Bounding box 좌표 변환 (원본 → 리사이즈된 이미지)
-            scale_x = self.image_size / original_w
-            scale_y = self.image_size / original_h
-            
-            scaled_bbox = np.array([
-                bbox[0] * scale_x,  # x_min
-                bbox[1] * scale_y,  # y_min
-                bbox[2] * scale_x,  # x_max
-                bbox[3] * scale_y   # y_max
-            ])
-            
-            logger.info(f"Original bbox: {bbox}, Scaled bbox: {scaled_bbox}")
-            
             # 7. Video Predictor API 사용 (원본 스크립트 방식)
             with torch.inference_mode(), torch.autocast("cuda", dtype=torch.bfloat16):
                 # 상태 초기화
@@ -392,7 +366,7 @@ class MedSAM2InferenceEngine:
                     inference_state=inference_state,
                     frame_idx=0,  # 단일 슬라이스는 0번 프레임
                     obj_id=1,
-                    box=scaled_bbox,
+                    box=np.array(bbox), # 원본 bbox 전달
                 )
                 
                 # 마스크 추출 (512x512 크기)
@@ -435,7 +409,7 @@ class MedSAM2InferenceEngine:
         rmin, rmax = np.where(rows)[0][[0, -1]]
         cmin, cmax = np.where(cols)[0][[0, -1]]
         
-        return [cmin, rmin, cmax + 1, rmax + 1]
+        return [int(cmin), int(rmin), int(cmax + 1), int(rmax + 1)]
     
     def _encode_mask_to_base64(self, mask: np.ndarray) -> str:
         """마스크를 Base64로 인코딩"""
