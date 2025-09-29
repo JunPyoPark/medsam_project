@@ -62,11 +62,41 @@ def _display_to_original_xy(img_state, slice_index: int, x_disp: int, y_disp: in
     if img_state is None:
         return int(x_disp), int(y_disp)
     
-    # 단순히 디스플레이 좌표를 원본 좌표로 그대로 사용
-    # 이미지가 90도 회전되어 표시되지만, 바운딩 박스는 원본 좌표계 기준으로 입력됨
-    x_orig = int(x_disp)
-    y_orig = int(y_disp)
-    return x_orig, y_orig
+    try:
+        # 이미지가 np.rot90(k=-1)로 90도 회전되어 표시됨
+        # 원본 이미지 크기 정보 가져오기
+        vol_data, z_size, mid_slice = img_state
+        
+        # vol_data는 (z, h, w) 형태이므로 h, w는 shape[1], shape[2]
+        if len(vol_data.shape) == 3:
+            original_h, original_w = vol_data.shape[1], vol_data.shape[2]  # (H, W)
+        else:
+            # 2D 이미지인 경우
+            original_h, original_w = vol_data.shape[0], vol_data.shape[1]
+        
+        # 회전된 이미지 크기 (np.rot90(k=-1) 후)
+        rotated_h, rotated_w = original_w, original_h  # 90도 회전으로 크기 바뀜
+        
+        # np.rot90(k=-1) 정확한 역변환 공식
+        # 원본 (i,j) -> 회전 (j, H-1-i)
+        # 역변환: 회전 (x,y) -> 원본 (W-1-y, x)
+        x_orig = int(rotated_w - 1 - y_disp)
+        y_orig = int(x_disp)
+        
+        # 경계 검사
+        x_orig = max(0, min(original_w - 1, x_orig))
+        y_orig = max(0, min(original_h - 1, y_orig))
+        
+        print(f"[_display_to_original_xy] Display: ({x_disp}, {y_disp}) -> Original: ({x_orig}, {y_orig})")
+        print(f"[_display_to_original_xy] Vol shape: {vol_data.shape}, Original HW: ({original_h}, {original_w})")
+        print(f"[_display_to_original_xy] Rotated HW: ({rotated_h}, {rotated_w})")
+        
+        return x_orig, y_orig
+        
+    except Exception as e:
+        print(f"[_display_to_original_xy] Error in coordinate transformation: {e}")
+        # 에러 발생 시 기본 변환 사용
+        return int(x_disp), int(y_disp)
 
 
 def load_nifti(fileobj):

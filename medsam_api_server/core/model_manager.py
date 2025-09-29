@@ -5,6 +5,7 @@ MedSAM2 모델 관리 모듈
 - 모델 싱글톤 패턴으로 메모리 효율화
 - GPU 메모리 관리
 - 모델 상태 모니터링
+- Video Predictor 통합 사용 (2D/3D 통일)
 """
 
 import os
@@ -22,15 +23,15 @@ logger = logging.getLogger(__name__)
 
 
 class MedSAM2ModelManager:
-    """MedSAM2 모델 관리자"""
+    """MedSAM2 모델 관리자 (Video Predictor 통합)"""
     
     def __init__(self):
-        self._model: Optional[Any] = None
+        self._model: Optional[Any] = None  # Video Predictor 하나로 통일
         self._model_lock = threading.RLock()
         self._is_loaded = False
         self._medsam2_available = False
         
-                # 모델 경로 설정
+        # 모델 경로 설정
         model_root = os.getenv("MODEL_ROOT", "/app/models")
         self._model_config = {
             "checkpoint_path": os.path.join(model_root, "MedSAM2_latest.pt"),
@@ -53,37 +54,34 @@ class MedSAM2ModelManager:
         
         # MedSAM2 사용 가능 여부 확인
         try:
-            from sam2.build_sam import build_sam2_video_predictor_npz
+            self._validate_model_files()
             self._medsam2_available = True
-            logger.info("✅ MedSAM2 import successful")
-        except ImportError as e:
+            logger.info("MedSAM2 Video Predictor available")
+        except Exception as e:
+            logger.warning(f"MedSAM2 not available: {e}")
             self._medsam2_available = False
-            logger.warning(f"⚠️ MedSAM2 not available: {e}")
-            logger.info("Server will start in limited mode (no inference capability)")
-        
-        # 모델 파라미터 검증
-        self._validate_model_files()
     
     def _validate_model_files(self):
-        """모델 파일 존재 여부 확인"""
+        """모델 파일 유효성 검사"""
         checkpoint_path = Path(self._model_config["checkpoint_path"])
-        config_path = Path(self._model_config["config_path"])
         
         if not checkpoint_path.exists():
-            logger.warning(f"Model checkpoint not found: {checkpoint_path}")
-            logger.info("Please download MedSAM2 checkpoint to enable inference")
+            raise FileNotFoundError(f"Model checkpoint not found: {checkpoint_path}")
         
-        if not config_path.exists():
-            logger.warning(f"Model config not found: {config_path}")
-            logger.info("Please ensure MedSAM2 config file is available")
-        else:
-            logger.info(f"Model config found: {config_path}")
-        
-        if checkpoint_path.exists():
-            logger.info(f"Model checkpoint found: {checkpoint_path}")
+        # MedSAM2 모듈 가져오기 테스트
+        try:
+            import sys
+            medsam2_path = "/app/MedSAM2"
+            if medsam2_path not in sys.path:
+                sys.path.insert(0, medsam2_path)
+            from sam2.build_sam import build_sam2_video_predictor_npz
+        except ImportError as e:
+            raise ImportError(f"Cannot import MedSAM2 modules: {e}")
+
+        logger.info(f"Model checkpoint found: {checkpoint_path}")
     
     def load_model(self, force_reload: bool = False) -> Any:
-        """모델 로딩 (싱글톤 패턴)"""
+        """Video Predictor 모델 로딩 (싱글톤 패턴)"""
         with self._model_lock:
             if self._model is not None and self._is_loaded and not force_reload:
                 return self._model
@@ -92,7 +90,7 @@ class MedSAM2ModelManager:
                 raise RuntimeError("MedSAM2 not available. Please install MedSAM2 first.")
             
             try:
-                logger.info("Loading MedSAM2 model...")
+                logger.info("Loading MedSAM2 Video Predictor...")
                 
                 # 체크포인트 파일 확인
                 checkpoint_path = Path(self._model_config["checkpoint_path"])
@@ -104,7 +102,7 @@ class MedSAM2ModelManager:
                     torch.cuda.empty_cache()
                     gc.collect()
                 
-                # MedSAM2 모델 로딩 - SAM2ImagePredictor 사용 (더 간단함)
+                # MedSAM2 모델 로딩 - Video Predictor NPZ 방식 (원본 스크립트와 동일)
                 import os
                 import sys
                 
@@ -113,55 +111,29 @@ class MedSAM2ModelManager:
                 if medsam2_path not in sys.path:
                     sys.path.insert(0, medsam2_path)
                 
-                # MedSAM2 모델 로딩 - 올바른 Hydra 초기화
-                from hydra import initialize_config_dir, compose
-                from hydra.core.global_hydra import GlobalHydra
-                
                 # 현재 작업 디렉토리를 MedSAM2로 변경
                 original_cwd = os.getcwd()
                 os.chdir(medsam2_path)
                 
                 try:
-                    # 기존 Hydra 인스턴스 정리
-                    GlobalHydra.instance().clear()
+                    # MedSAM2 Video Predictor 로딩 (원본 방식)
+                    from sam2.build_sam import build_sam2_video_predictor_npz
                     
-                    # 절대 경로로 설정 디렉토리 지정
-                    config_dir = os.path.abspath("sam2/configs")
-                    logger.info(f"Using config directory: {config_dir}")
+                    logger.info("Building MedSAM2 Video Predictor...")
+                    self._model = build_sam2_video_predictor_npz(
+                        config_file="configs/sam2.1_hiera_t512.yaml",  # 상대 경로 사용
+                        ckpt_path=str(checkpoint_path)
+                    )
                     
-                    with initialize_config_dir(config_dir=config_dir, version_base=None):
-                        from sam2.build_sam import build_sam2
-                        from sam2.sam2_image_predictor import SAM2ImagePredictor
-                        
-                        logger.info("Building MedSAM2 base model...")
-                        sam2_model = build_sam2(
-                            config_file="sam2.1_hiera_t512",
-                            ckpt_path=self._model_config["checkpoint_path"],
-                            device=self._model_config["device"]
-                        )
-                        
-                        # SAM2ImagePredictor로 래핑 (2D 분할용)
-                        self._model = SAM2ImagePredictor(sam_model=sam2_model)
-                        
-                        # SAM2VideoPredictor도 로드 (3D propagation용)
-                        from sam2.build_sam import build_sam2_video_predictor
-                        self._video_model = build_sam2_video_predictor(
-                            config_file="sam2.1_hiera_t512",
-                            ckpt_path=self._model_config["checkpoint_path"],
-                            device=self._model_config["device"]
-                        )
-                        
-                        logger.info("✅ MedSAM2 image predictor loaded successfully!")
-                        logger.info("✅ MedSAM2 video predictor loaded successfully!")
-                        logger.info(f"Image model type: {type(self._model)}")
-                        logger.info(f"Video model type: {type(self._video_model)}")
-                        
+                    logger.info("✅ MedSAM2 Video Predictor loaded successfully!")
+                    logger.info(f"Model type: {type(self._model)}")
+                    
                 finally:
                     # 원래 작업 디렉토리로 복원
                     os.chdir(original_cwd)
                 
                 self._is_loaded = True
-                logger.info(f"MedSAM2 model loaded successfully on {self._model_config['device']}")
+                logger.info(f"MedSAM2 Video Predictor loaded successfully on {self._model_config['device']}")
                 
                 # GPU 메모리 사용량 로깅
                 if torch.cuda.is_available():
@@ -171,23 +143,18 @@ class MedSAM2ModelManager:
                 return self._model
                 
             except Exception as e:
-                logger.error(f"Failed to load MedSAM2 model: {e}")
+                logger.error(f"Failed to load MedSAM2 Video Predictor: {e}")
                 self._model = None
                 self._is_loaded = False
-                raise RuntimeError(f"Failed to load MedSAM2 model: {e}")
+                raise RuntimeError(f"Failed to load MedSAM2 Video Predictor: {e}")
     
     def unload_model(self):
         """모델 언로딩 및 메모리 정리"""
         with self._model_lock:
             if self._model is not None:
-                logger.info("Unloading MedSAM2 models...")
+                logger.info("Unloading MedSAM2 Video Predictor...")
                 del self._model
                 self._model = None
-                
-                # Video model도 언로딩
-                if hasattr(self, '_video_model') and self._video_model is not None:
-                    del self._video_model
-                    self._video_model = None
                 
                 self._is_loaded = False
                 
@@ -207,16 +174,14 @@ class MedSAM2ModelManager:
         return self._medsam2_available
     
     def get_model(self) -> Any:
-        """이미지 모델 인스턴스 반환 (자동 로딩)"""
+        """Video Predictor 모델 인스턴스 반환 (2D/3D 통합)"""
         if not self.is_loaded():
             return self.load_model()
         return self._model
     
     def get_video_model(self) -> Any:
-        """비디오 모델 인스턴스 반환 (3D propagation용)"""
-        if not self.is_loaded():
-            self.load_model()
-        return getattr(self, '_video_model', None)
+        """Video Predictor 모델 인스턴스 반환 (하위 호환성)"""
+        return self.get_model()
     
     def get_model_info(self) -> Dict[str, Any]:
         """모델 정보 반환"""
@@ -233,7 +198,8 @@ class MedSAM2ModelManager:
             "config_exists": config_exists,
             "cuda_available": torch.cuda.is_available(),
             "gpu_memory_allocated": torch.cuda.memory_allocated() / 1024 / 1024 if torch.cuda.is_available() else 0,
-            "gpu_memory_cached": torch.cuda.memory_reserved() / 1024 / 1024 if torch.cuda.is_available() else 0
+            "gpu_memory_cached": torch.cuda.memory_reserved() / 1024 / 1024 if torch.cuda.is_available() else 0,
+            "model_type": "Video Predictor (Unified 2D/3D)"
         }
 
 

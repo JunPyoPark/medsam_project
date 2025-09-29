@@ -167,288 +167,25 @@ class MedSAM2InferenceEngine:
                     torch.cuda.empty_cache()
                 gc.collect()
     
-    def propagate_3d_mask(
-        self,
-        job_id: str,
-        volume_path: str,
-        reference_slice: int,
-        start_slice: int,
-        end_slice: int,
-        reference_mask_b64: str,
-        progress_callback: Optional[callable] = None
-    ) -> Dict[str, Any]:
-        """
-        3D 마스크 전파 (MedSAM2 방식)
-        
-        Args:
-            job_id: 작업 ID
-            volume_path: NIfTI 파일 경로
-            reference_slice: 참조 슬라이스 인덱스
-            start_slice: 시작 슬라이스 인덱스
-            end_slice: 끝 슬라이스 인덱스
-            reference_mask_b64: Base64 인코딩된 참조 마스크
-            progress_callback: 진행률 콜백 함수
-            
-        Returns:
-            Dict containing 3D mask data and metadata
-        """
-        logger.info(f"Starting 3D propagation for job {job_id}")
-        
-        with self.gpu_manager.acquire_gpu(job_id, "propagation", estimated_duration=300):
-            try:
-                # 1. 볼륨 데이터 로딩
-                volume_data, metadata = self.processor.load_nifti(volume_path)
-                logger.info(f"Loaded volume for propagation: {volume_data.shape}")
-                
-                # 2. 범위 검증
-                if not self.processor.validate_slice_range(start_slice, end_slice, volume_data.shape[0]):
-                    raise ValueError(f"Invalid slice range: {start_slice}-{end_slice}")
-                
-                if not (start_slice <= reference_slice <= end_slice):
-                    raise ValueError(f"Reference slice {reference_slice} not in range {start_slice}-{end_slice}")
-                
-                # 3. 참조 마스크 디코딩 및 bounding box 추출
-                reference_mask = self._decode_mask_from_base64(reference_mask_b64)
-                bbox = self._extract_bbox_from_mask(reference_mask)
-                
-                if bbox is None:
-                    raise ValueError("No valid bounding box found in reference mask")
-                
-                # 4. 볼륨 데이터 전처리 (전체 볼륨)
-                volume_subset = volume_data[start_slice:end_slice + 1]
-                processed_volume = self._preprocess_volume_for_medsam2(volume_subset)
-                
-                # 5. MedSAM2 3D 전파 실행
-                mask_3d = self._run_3d_propagation(
-                    processed_volume, 
-                    bbox, 
-                    reference_slice - start_slice,  # 상대적 인덱스
-                    progress_callback
-                )
-                
-                # 6. 후처리
-                mask_3d = get_largest_connected_component(mask_3d)
-                
-                # 7. 결과 저장
-                result_path = self._save_3d_result(job_id, mask_3d, metadata, start_slice)
-                
-                # 8. 볼륨 통계 계산
-                volume_stats = self._calculate_volume_statistics(mask_3d, metadata)
-                
-                result = {
-                    "result_file_path": result_path,
-                    "total_slices": mask_3d.shape[0],
-                    "processed_slices": mask_3d.shape[0],
-                    "volume_statistics": volume_stats,
-                    "slice_range": [start_slice, end_slice],
-                    "reference_slice": reference_slice
-                }
-                
-                logger.info(f"3D propagation completed for job {job_id}")
-                return result
-                
-            except Exception as e:
-                logger.error(f"3D propagation failed for job {job_id}: {e}")
-                raise
-            finally:
-                # GPU 메모리 정리
-                if torch.cuda.is_available():
-                    torch.cuda.empty_cache()
-                gc.collect()
-    
-    def _run_single_slice_inference(self, model, image: np.ndarray, bbox: List[int]) -> np.ndarray:
-        """단일 슬라이스 MedSAM2 추론"""
-        try:
-            # 단일 슬라이스를 3D 형태로 변환 (MedSAM2는 비디오 형태 입력 필요)
-            single_slice_volume = image[np.newaxis, :, :]  # (1, H, W)
-            
-            # RGB 변환 및 리사이즈
-            img_resized = resize_grayscale_to_rgb_and_resize(single_slice_volume, self.image_size)
-            img_resized = img_resized / 255.0
-            img_tensor = torch.from_numpy(img_resized).float()
-            
-            if torch.cuda.is_available():
-                img_tensor = img_tensor.cuda()
-            
-            # 정규화
-            img_tensor -= self.img_mean
-            img_tensor /= self.img_std
-            
-            # Bounding box 좌표 변환 (원본 → 리사이즈된 이미지)
-            original_h, original_w = image.shape
-            scale_x = self.image_size / original_w
-            scale_y = self.image_size / original_h
-            
-            scaled_bbox = np.array([
-                bbox[0] * scale_x,  # x1
-                bbox[1] * scale_y,  # y1
-                bbox[2] * scale_x,  # x2
-                bbox[3] * scale_y   # y2
-            ])
-            
-            with torch.inference_mode():
-                # SAM2ImagePredictor API 사용
-                # 이미지 설정 - 차원 확인 및 조정
-                logger.info(f"img_tensor shape before permute: {img_tensor.shape}")
-                
-                if len(img_tensor.shape) == 4:  # (batch, channel, height, width)
-                    # 첫 번째 배치와 채널 차원 제거하고 (H, W, C) 형태로 변환
-                    img_for_sam = img_tensor[0].permute(1, 2, 0).cpu().numpy()
-                elif len(img_tensor.shape) == 3:  # (channel, height, width)
-                    # (H, W, C) 형태로 변환
-                    img_for_sam = img_tensor.permute(1, 2, 0).cpu().numpy()
-                else:
-                    raise ValueError(f"Unexpected tensor shape: {img_tensor.shape}")
-                
-                # 0-255 범위로 변환
-                img_for_sam = (img_for_sam * 255).astype(np.uint8)
-                logger.info(f"img_for_sam shape: {img_for_sam.shape}")
-                
-                model.set_image(img_for_sam)
-                
-                # Bounding box로 마스크 생성 (SAM2ImagePredictor API)
-                # scaled_bbox가 이미 numpy 배열이므로 그대로 사용
-                if isinstance(scaled_bbox, torch.Tensor):
-                    bbox_np = scaled_bbox.cpu().numpy()
-                else:
-                    bbox_np = scaled_bbox
-                
-                logger.info(f"Using bounding box: {bbox_np}")
-                
-                masks, scores, logits = model.predict(
-                    point_coords=None,
-                    point_labels=None,
-                    box=bbox_np,
-                    multimask_output=False
-                )
-                
-                # 첫 번째 마스크 사용 (512x512 크기)
-                mask_512 = masks[0].astype(np.uint8)
-                
-                # 원본 이미지 크기로 리사이즈
-                if mask_512.shape != (original_h, original_w):
-                    from PIL import Image
-                    mask_pil = Image.fromarray(mask_512 * 255)
-                    mask_resized_pil = mask_pil.resize((original_w, original_h), Image.NEAREST)
-                    mask = (np.array(mask_resized_pil) > 128).astype(np.uint8)
-                else:
-                    mask = mask_512
-                
-                return mask
-                
-        except Exception as e:
-            logger.error(f"Single slice inference failed: {e}")
-            raise RuntimeError(f"Single slice inference failed: {e}")
-    
-    def _run_3d_propagation(self, volume: np.ndarray, bbox: List[int], 
-                           reference_idx: int, progress_callback: Optional[callable] = None) -> np.ndarray:
-        """MedSAM2 3D 전파 실행"""
-        try:
-            # Video model 사용 (3D propagation용)
-            model = self.model_manager.get_video_model()
-            if model is None:
-                raise RuntimeError("Video model not available for 3D propagation")
-            
-            # RGB 변환 및 리사이즈
-            img_resized = resize_grayscale_to_rgb_and_resize(volume, self.image_size)
-            img_resized = img_resized / 255.0
-            img_tensor = torch.from_numpy(img_resized).float()
-            
-            if torch.cuda.is_available():
-                img_tensor = img_tensor.cuda()
-            
-            # 정규화
-            img_tensor -= self.img_mean
-            img_tensor /= self.img_std
-            
-            # Bounding box 좌표 변환
-            original_h, original_w = volume.shape[1], volume.shape[2]
-            scale_x = self.image_size / original_w
-            scale_y = self.image_size / original_h
-            
-            scaled_bbox = np.array([
-                bbox[0] * scale_x,
-                bbox[1] * scale_y,
-                bbox[2] * scale_x,
-                bbox[3] * scale_y
-            ])
-            
-            # 결과 마스크 초기화
-            mask_3d = np.zeros((volume.shape[0], original_h, original_w), dtype=np.uint8)
-            
-            with torch.inference_mode(), torch.autocast("cuda", dtype=torch.bfloat16):
-                # MedSAM2 상태 초기화
-                inference_state = model.init_state(img_tensor, original_h, original_w)
-                
-                # 참조 슬라이스에 bounding box 추가
-                _, out_obj_ids, out_mask_logits = model.add_new_points_or_box(
-                    inference_state=inference_state,
-                    frame_idx=reference_idx,
-                    obj_id=1,
-                    box=scaled_bbox,
-                )
-                
-                if progress_callback:
-                    progress_callback(10, "Starting forward propagation...")
-                
-                # Forward propagation (참조 → 끝)
-                for out_frame_idx, out_obj_ids, out_mask_logits in model.propagate_in_video(inference_state):
-                    mask_3d[out_frame_idx] = (out_mask_logits[0] > 0.0).cpu().numpy()[0]
-                    
-                    if progress_callback:
-                        progress = 10 + (out_frame_idx / volume.shape[0]) * 40
-                        progress_callback(progress, f"Forward propagation: frame {out_frame_idx}")
-                
-                # 상태 리셋 후 Backward propagation
-                model.reset_state(inference_state)
-                
-                # 참조 슬라이스에 다시 bounding box 추가
-                _, out_obj_ids, out_mask_logits = model.add_new_points_or_box(
-                    inference_state=inference_state,
-                    frame_idx=reference_idx,
-                    obj_id=1,
-                    box=scaled_bbox,
-                )
-                
-                if progress_callback:
-                    progress_callback(50, "Starting backward propagation...")
-                
-                # Backward propagation (참조 → 시작)
-                for out_frame_idx, out_obj_ids, out_mask_logits in model.propagate_in_video(inference_state, reverse=True):
-                    mask_3d[out_frame_idx] = (out_mask_logits[0] > 0.0).cpu().numpy()[0]
-                    
-                    if progress_callback:
-                        progress = 50 + ((volume.shape[0] - out_frame_idx) / volume.shape[0]) * 40
-                        progress_callback(progress, f"Backward propagation: frame {out_frame_idx}")
-                
-                # 상태 리셋
-                model.reset_state(inference_state)
-                
-                return mask_3d
-                
-        except Exception as e:
-            logger.error(f"3D propagation failed: {e}")
-            raise RuntimeError(f"3D propagation failed: {e}")
-    
     def propagate_3d_from_mask(self, job_id: str, volume_path: str, reference_slice: int, 
                               start_slice: int, end_slice: int, reference_mask_b64: str,
                               progress_callback: Optional[callable] = None) -> Dict[str, Any]:
-        """2D 마스크로부터 3D 전파 실행"""
+        """2D 마스크로부터 3D 전파 실행 (MedSAM2 Video Predictor 원본 방식)"""
         try:
             logger.info(f"Starting 3D propagation from mask for job {job_id}")
             logger.info(f"Reference slice: {reference_slice}, Range: {start_slice}-{end_slice}")
             
-            # NIfTI 파일 로딩
+            # 1. NIfTI 파일 로딩
             processor = MedicalImageProcessor()
             volume, metadata = processor.load_nifti(volume_path)
             logger.info(f"Loaded volume: {volume.shape}")
             
-            # Video model 로딩
-            model = self.model_manager.get_video_model()
+            # 2. Video model 로딩
+            model = self.model_manager.get_model()  # Video Predictor 통합 사용
             if model is None:
                 raise RuntimeError("Video model not available for 3D propagation")
             
-            # 참조 마스크 디코딩
+            # 3. 참조 마스크 디코딩 및 bbox 추출
             import base64
             from PIL import Image
             import io
@@ -458,141 +195,123 @@ class MedSAM2InferenceEngine:
             reference_mask = np.array(mask_img) > 0
             logger.info(f"Reference mask shape: {reference_mask.shape}")
             
-            # RGB 변환 및 리사이즈
-            img_resized = resize_grayscale_to_rgb_and_resize(volume, self.image_size)
+            # 참조 마스크에서 bbox 추출
+            bbox = self._extract_bbox_from_mask(reference_mask)
+            if bbox is None:
+                raise ValueError("No valid bounding box found in reference mask")
+            
+            logger.info(f"Extracted bbox: {bbox}")
+            
+            # 4. 볼륨 전처리 (MedSAM2 원본 방식)
+            # DICOM windowing (1-99 percentile 사용)
+            volume_clipped = np.clip(volume, np.percentile(volume, 1), np.percentile(volume, 99))
+            volume_normalized = (volume_clipped - np.min(volume_clipped)) / (np.max(volume_clipped) - np.min(volume_clipped)) * 255.0
+            volume_uint8 = np.uint8(volume_normalized)
+            
+            logger.info(f"Volume preprocessing completed. Shape: {volume_uint8.shape}")
+            
+            # 5. RGB 변환 및 리사이즈
+            img_resized = resize_grayscale_to_rgb_and_resize(volume_uint8, self.image_size)
             img_resized = img_resized / 255.0
             img_tensor = torch.from_numpy(img_resized).float()
             
             if torch.cuda.is_available():
                 img_tensor = img_tensor.cuda()
             
-            # 정규화
+            # 6. 정규화
             img_tensor -= self.img_mean
             img_tensor /= self.img_std
             
-            # 결과 마스크 초기화
+            # 7. Bounding box 좌표 변환 (원본 → 리사이즈된 이미지)
             original_h, original_w = volume.shape[1], volume.shape[2]
-            mask_3d = np.zeros((volume.shape[0], original_h, original_w), dtype=np.uint8)
+            video_height, video_width = original_h, original_w
+            scale_x = self.image_size / original_w
+            scale_y = self.image_size / original_h
             
-            with torch.inference_mode():
-                # 임시 해결책: 각 슬라이스를 개별적으로 처리 (2D 모델 사용)
-                image_model = self.model_manager.get_model()  # 2D image predictor 사용
+            scaled_bbox = np.array([
+                bbox[0] * scale_x,  # x_min
+                bbox[1] * scale_y,  # y_min
+                bbox[2] * scale_x,  # x_max
+                bbox[3] * scale_y   # y_max
+            ])
+            
+            logger.info(f"Scaled bbox: {scaled_bbox}")
+            
+            # 8. 결과 마스크 초기화
+            mask_3d = np.zeros(volume.shape, dtype=np.uint8)
+            
+            # 9. MedSAM2 Video Predictor로 3D 전파 (원본 스크립트 방식)
+            with torch.inference_mode(), torch.autocast("cuda", dtype=torch.bfloat16):
+                # 상태 초기화
+                inference_state = model.init_state(img_tensor, video_height, video_width)
+                if progress_callback:
+                    progress_callback(10, "MedSAM2 상태 초기화 완료")
+                
+                # 참조 슬라이스에 bbox 추가
+                _, out_obj_ids, out_mask_logits = model.add_new_points_or_box(
+                    inference_state=inference_state,
+                    frame_idx=reference_slice,
+                    obj_id=1,
+                    box=scaled_bbox,
+                )
                 
                 if progress_callback:
-                    progress_callback(10, "초기화 완료, 참조 마스크 설정 중...")
+                    progress_callback(20, "참조 슬라이스 설정 완료, 순방향 전파 시작...")
                 
-                # 참조 슬라이스의 마스크를 원본 크기에 맞게 리사이즈
-                if reference_mask.shape != (original_h, original_w):
-                    from PIL import Image
-                    mask_pil = Image.fromarray(reference_mask.astype(np.uint8) * 255)
-                    mask_resized_pil = mask_pil.resize((original_w, original_h), Image.NEAREST)
-                    current_mask = (np.array(mask_resized_pil) > 128).astype(np.uint8)
-                else:
-                    current_mask = reference_mask.astype(np.uint8)
+                # Forward propagation (참조 → 끝)
+                forward_count = 0
+                total_forward = volume.shape[0] - reference_slice
+                for out_frame_idx, out_obj_ids, out_mask_logits in model.propagate_in_video(inference_state):
+                    if start_slice <= out_frame_idx <= end_slice:
+                        mask = (out_mask_logits[0] > 0.0).cpu().numpy()[0]
+                        mask_3d[out_frame_idx] = mask
+                    
+                    forward_count += 1
+                    if progress_callback and total_forward > 0:
+                        progress = 20 + (forward_count / total_forward) * 35
+                        progress_callback(int(progress), f"순방향 전파: {out_frame_idx}/{end_slice}")
                 
-                mask_3d[reference_slice] = current_mask
-                
-                if progress_callback:
-                    progress_callback(20, "참조 마스크 설정 완료, 전파 시작...")
-                
-                total_frames = end_slice - start_slice + 1
-                processed_frames = 1  # 참조 슬라이스는 이미 처리됨
-                
-                # Forward propagation (참조 슬라이스 → 끝 슬라이스)
-                for slice_idx in range(reference_slice + 1, end_slice + 1):
-                    try:
-                        # 현재 슬라이스 이미지
-                        current_slice = volume[slice_idx]
-                        
-                        # 이전 마스크에서 바운딩 박스 추출
-                        mask_coords = np.where(current_mask)
-                        if len(mask_coords[0]) > 0:
-                            y_min, y_max = mask_coords[0].min(), mask_coords[0].max()
-                            x_min, x_max = mask_coords[1].min(), mask_coords[1].max()
-                            
-                            # 약간 확장
-                            margin = 10
-                            y_min = max(0, y_min - margin)
-                            y_max = min(current_slice.shape[0] - 1, y_max + margin)
-                            x_min = max(0, x_min - margin)
-                            x_max = min(current_slice.shape[1] - 1, x_max + margin)
-                            
-                            bbox = [x_min, y_min, x_max, y_max]
-                            
-                            # 2D 분할 실행
-                            new_mask = self._run_single_slice_inference(image_model, current_slice, bbox)
-                            mask_3d[slice_idx] = new_mask
-                            current_mask = new_mask
-                        else:
-                            # 이전 마스크가 비어있으면 빈 마스크 사용
-                            mask_3d[slice_idx] = np.zeros_like(current_slice, dtype=np.uint8)
-                            current_mask = mask_3d[slice_idx]
-                        
-                        processed_frames += 1
-                        if progress_callback:
-                            progress = 20 + (processed_frames / total_frames) * 35
-                            progress_callback(progress, f"순방향 전파: {slice_idx}/{end_slice} 프레임")
-                            
-                    except Exception as e:
-                        logger.warning(f"Forward propagation failed at slice {slice_idx}: {e}")
-                        mask_3d[slice_idx] = np.zeros_like(volume[slice_idx], dtype=np.uint8)
-                        processed_frames += 1
-                
-                # Backward propagation (참조 슬라이스 → 시작 슬라이스)
-                # 참조 마스크를 원본 크기에 맞게 리사이즈 (forward와 동일)
-                if reference_mask.shape != (original_h, original_w):
-                    from PIL import Image
-                    mask_pil = Image.fromarray(reference_mask.astype(np.uint8) * 255)
-                    mask_resized_pil = mask_pil.resize((original_w, original_h), Image.NEAREST)
-                    current_mask = (np.array(mask_resized_pil) > 128).astype(np.uint8)
-                else:
-                    current_mask = reference_mask.astype(np.uint8)
-                for slice_idx in range(reference_slice - 1, start_slice - 1, -1):
-                    try:
-                        # 현재 슬라이스 이미지
-                        current_slice = volume[slice_idx]
-                        
-                        # 이전 마스크에서 바운딩 박스 추출
-                        mask_coords = np.where(current_mask)
-                        if len(mask_coords[0]) > 0:
-                            y_min, y_max = mask_coords[0].min(), mask_coords[0].max()
-                            x_min, x_max = mask_coords[1].min(), mask_coords[1].max()
-                            
-                            # 약간 확장
-                            margin = 10
-                            y_min = max(0, y_min - margin)
-                            y_max = min(current_slice.shape[0] - 1, y_max + margin)
-                            x_min = max(0, x_min - margin)
-                            x_max = min(current_slice.shape[1] - 1, x_max + margin)
-                            
-                            bbox = [x_min, y_min, x_max, y_max]
-                            
-                            # 2D 분할 실행
-                            new_mask = self._run_single_slice_inference(image_model, current_slice, bbox)
-                            mask_3d[slice_idx] = new_mask
-                            current_mask = new_mask
-                        else:
-                            # 이전 마스크가 비어있으면 빈 마스크 사용
-                            mask_3d[slice_idx] = np.zeros_like(current_slice, dtype=np.uint8)
-                            current_mask = mask_3d[slice_idx]
-                        
-                        processed_frames += 1
-                        if progress_callback:
-                            progress = 55 + (processed_frames / total_frames) * 35
-                            progress_callback(progress, f"역방향 전파: {slice_idx}/{start_slice} 프레임")
-                            
-                    except Exception as e:
-                        logger.warning(f"Backward propagation failed at slice {slice_idx}: {e}")
-                        mask_3d[slice_idx] = np.zeros_like(volume[slice_idx], dtype=np.uint8)
-                        processed_frames += 1
+                # 상태 리셋 후 Backward propagation
+                model.reset_state(inference_state)
                 
                 if progress_callback:
-                    progress_callback(95, "3D 마스크 저장 중...")
+                    progress_callback(55, "역방향 전파 시작...")
                 
-                # 결과 저장
+                # 참조 슬라이스에 다시 bbox 추가
+                _, out_obj_ids, out_mask_logits = model.add_new_points_or_box(
+                    inference_state=inference_state,
+                    frame_idx=reference_slice,
+                    obj_id=1,
+                    box=scaled_bbox,
+                )
+                
+                # Backward propagation (참조 → 시작)
+                backward_count = 0
+                total_backward = reference_slice
+                for out_frame_idx, out_obj_ids, out_mask_logits in model.propagate_in_video(inference_state, reverse=True):
+                    if start_slice <= out_frame_idx < reference_slice:  # 중복 방지
+                        mask = (out_mask_logits[0] > 0.0).cpu().numpy()[0]
+                        mask_3d[out_frame_idx] = mask
+                    
+                    backward_count += 1
+                    if progress_callback and total_backward > 0:
+                        progress = 55 + (backward_count / total_backward) * 35
+                        progress_callback(int(progress), f"역방향 전파: {out_frame_idx}/{start_slice}")
+                
+                # 상태 리셋
+                model.reset_state(inference_state)
+                
+                if progress_callback:
+                    progress_callback(90, "3D 마스크 후처리 중...")
+                
+                # 10. 후처리 (가장 큰 연결된 구성요소만 유지)
+                if np.any(mask_3d):  # 마스크가 비어있지 않을 때만 실행
+                    mask_3d = get_largest_connected_component(mask_3d)
+                
+                # 11. 결과 저장
                 result_file_path = self._save_3d_result(job_id, mask_3d, metadata, start_slice)
                 
-                # 통계 계산
+                # 12. 통계 계산
                 volume_stats = self._calculate_volume_statistics(mask_3d, metadata)
                 
                 if progress_callback:
@@ -603,22 +322,104 @@ class MedSAM2InferenceEngine:
                 return {
                     "result_file_path": result_file_path,
                     "total_slices": volume.shape[0],
-                    "processed_slices": processed_frames,
+                    "processed_slices": end_slice - start_slice + 1,
                     "volume_statistics": volume_stats,
                     "slice_range": [start_slice, end_slice],
                     "reference_slice": reference_slice
                 }
                 
         except Exception as e:
-            logger.error(f"3D propagation from mask failed: {e}")
+            logger.error(f"3D propagation from mask failed: {e}", exc_info=True)
             raise RuntimeError(f"3D propagation from mask failed: {e}")
+        finally:
+            # GPU 메모리 정리
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            gc.collect()
     
-    def _preprocess_volume_for_medsam2(self, volume: np.ndarray) -> np.ndarray:
-        """MedSAM2용 볼륨 전처리"""
-        # 0-255 정규화
-        processed = (volume - np.min(volume)) / (np.max(volume) - np.min(volume)) * 255.0
-        processed = np.uint8(processed)
-        return processed
+    def _run_single_slice_inference(self, model, image: np.ndarray, bbox: List[int]) -> np.ndarray:
+        """단일 슬라이스 Video Predictor 추론 (원본 MedSAM2 방식)"""
+        try:
+            logger.info(f"Starting single slice inference with bbox: {bbox}")
+            
+            # 1. 단일 슬라이스를 3D 형태로 변환 (Video Predictor는 3D 입력 필요)
+            single_slice_volume = image[np.newaxis, :, :]  # (1, H, W)
+            logger.info(f"Single slice volume shape: {single_slice_volume.shape}")
+            
+            # 2. DICOM windowing 적용 (원본 스크립트 방식)
+            volume_clipped = np.clip(single_slice_volume, 
+                                   np.percentile(single_slice_volume, 1), 
+                                   np.percentile(single_slice_volume, 99))
+            volume_normalized = (volume_clipped - np.min(volume_clipped)) / (np.max(volume_clipped) - np.min(volume_clipped)) * 255.0
+            volume_uint8 = np.uint8(volume_normalized)
+            
+            # 3. RGB 변환 및 리사이즈 (원본 스크립트 방식)
+            img_resized = resize_grayscale_to_rgb_and_resize(volume_uint8, self.image_size)
+            img_resized = img_resized / 255.0
+            img_tensor = torch.from_numpy(img_resized).float()
+            
+            if torch.cuda.is_available():
+                img_tensor = img_tensor.cuda()
+            
+            # 4. 정규화 (ImageNet 기준)
+            img_tensor -= self.img_mean
+            img_tensor /= self.img_std
+            
+            # 5. 원본 이미지 크기 정보
+            original_h, original_w = image.shape
+            video_height, video_width = original_h, original_w
+            
+            # 6. Bounding box 좌표 변환 (원본 → 리사이즈된 이미지)
+            scale_x = self.image_size / original_w
+            scale_y = self.image_size / original_h
+            
+            scaled_bbox = np.array([
+                bbox[0] * scale_x,  # x_min
+                bbox[1] * scale_y,  # y_min
+                bbox[2] * scale_x,  # x_max
+                bbox[3] * scale_y   # y_max
+            ])
+            
+            logger.info(f"Original bbox: {bbox}, Scaled bbox: {scaled_bbox}")
+            
+            # 7. Video Predictor API 사용 (원본 스크립트 방식)
+            with torch.inference_mode(), torch.autocast("cuda", dtype=torch.bfloat16):
+                # 상태 초기화
+                inference_state = model.init_state(img_tensor, video_height, video_width)
+                
+                # 첫 번째 프레임(슬라이스)에 bounding box 추가
+                _, out_obj_ids, out_mask_logits = model.add_new_points_or_box(
+                    inference_state=inference_state,
+                    frame_idx=0,  # 단일 슬라이스는 0번 프레임
+                    obj_id=1,
+                    box=scaled_bbox,
+                )
+                
+                # 마스크 추출 (512x512 크기)
+                mask_512 = (out_mask_logits[0] > 0.0).cpu().numpy()[0]
+                mask_512 = mask_512.astype(np.uint8)
+                
+                # 상태 리셋
+                model.reset_state(inference_state)
+                
+                logger.info(f"Generated mask shape: {mask_512.shape}")
+                
+                # 8. 원본 이미지 크기로 리사이즈
+                if mask_512.shape != (original_h, original_w):
+                    from PIL import Image
+                    mask_pil = Image.fromarray(mask_512 * 255)
+                    mask_resized_pil = mask_pil.resize((original_w, original_h), Image.NEAREST)
+                    mask = (np.array(mask_resized_pil) > 128).astype(np.uint8)
+                    logger.info(f"Resized mask from {mask_512.shape} to {mask.shape}")
+                else:
+                    mask = mask_512
+                
+                logger.info(f"Final mask shape: {mask.shape}, unique values: {np.unique(mask)}")
+                return mask
+                
+        except Exception as e:
+            logger.error(f"Single slice inference failed: {e}", exc_info=True)
+            raise RuntimeError(f"Single slice inference failed: {e}")
     
     def _extract_bbox_from_mask(self, mask: np.ndarray) -> Optional[List[int]]:
         """마스크에서 bounding box 추출"""
