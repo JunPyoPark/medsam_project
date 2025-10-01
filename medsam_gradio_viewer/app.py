@@ -484,14 +484,21 @@ with gr.Blocks(title="MedSAM2 3D 뷰어") as demo:
         return trigger_propagation(job_id, s, e, init_si)
 
     def poll3(job_id):
+        """3D 전파 작업의 진행률을 폴링하고 UI를 업데이트합니다."""
         progress = gr.Progress(track_tqdm=False)
+        final_url = None
+        final_msg = "실패 또는 타임아웃"
+        
         for prog, msg, url in poll_propagation(job_id):
-            progress(prog)
-        st = requests.get(f"{API_BASE}/api/v1/jobs/{job_id}/status", timeout=5).json()
-        if st.get("status") == "COMPLETED" and st.get("result_url"):
-            url = st.get("result_url")
-            return gr.update(value=f"[3D 마스크 다운로드]({url})", visible=True), "완료"
-        return gr.update(visible=False), "실패 또는 타임아웃"
+            progress(prog / 100, desc=msg)
+            if url:
+                final_url = url
+            final_msg = msg
+        
+        if final_url:
+            return gr.update(value=f"[3D 마스크 다운로드]({final_url})", visible=True), "✅ 3D 전파 완료!"
+        else:
+            return gr.update(visible=False), final_msg
 
     prop_chain = run_3d.click(fn=start_prop, inputs=[job_state, start_slice, end_slice, init_slice, mid_state, z_state], outputs=[status_box])
     prop_chain.then(fn=poll3, inputs=[job_state], outputs=[result_link, status_box])
