@@ -73,4 +73,5 @@ celerybeat.pid
 # Temporary files
 *.tmp
 *.temp
-temp
+temp# MedSAM2 (별도 저장소 - 사용자가 클론해야 함)
+MedSAM2/
