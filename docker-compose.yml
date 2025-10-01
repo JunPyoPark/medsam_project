@@ -21,7 +21,11 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - ./MedSAM2:/app/MedSAM2
+      # 개발 모드: 로컬 코드 수정 시 즉시 반영 (hot reload)
+      # - ./MedSAM2:/app/MedSAM2
+      # - ./medsam_api_server:/app/medsam_api_server
+      
+      # 프로덕션 모드: 데이터와 모델만 마운트
       - ./data:/app/data
       - ./models:/app/models
       - ./temp:/app/temp
@@ -57,7 +61,11 @@ services:
       dockerfile: medsam_api_server/Dockerfile
     container_name: medsam2_worker
     volumes:
-      - ./MedSAM2:/app/MedSAM2
+      # 개발 모드: 로컬 코드 수정 시 즉시 반영
+      # - ./MedSAM2:/app/MedSAM2
+      # - ./medsam_api_server:/app/medsam_api_server
+      
+      # 프로덕션 모드: 데이터와 모델만 마운트
       - ./data:/app/data
       - ./models:/app/models
       - ./temp:/app/temp

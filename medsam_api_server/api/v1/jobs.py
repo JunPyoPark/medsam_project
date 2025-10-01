@@ -9,9 +9,12 @@ import uuid
 import json
 import time
 import logging
+import numpy as np
 from datetime import datetime
 from typing import Optional, Dict, Any
 from pathlib import Path
+
+from PIL import Image, ImageDraw
 
 from fastapi import APIRouter, UploadFile, File, HTTPException, BackgroundTasks
 from fastapi.responses import JSONResponse, FileResponse
@@ -66,6 +69,30 @@ def _load_job_metadata(job_id: str) -> Optional[Dict[str, Any]]:
     except Exception as e:
         logger.error(f"Failed to load metadata for job {job_id}: {e}")
         return None
+
+def _save_debug_image_with_bbox(
+    image_slice: np.ndarray,
+    bbox: list,
+    output_path: str
+):
+    """디버그용으로 이미지 슬라이스에 바운딩 박스를 그려서 저장합니다."""
+    try:
+        # 시각화를 위해 0-255로 정규화
+        slice_min, slice_max = np.min(image_slice), np.max(image_slice)
+        if slice_max > slice_min:
+            image_slice = (image_slice - slice_min) / (slice_max - slice_min) * 255.0
+        
+        img_pil = Image.fromarray(image_slice.astype(np.uint8)).convert("RGB")
+        draw = ImageDraw.Draw(img_pil)
+        
+        # Bbox: [x1, y1, x2, y2]
+        x1, y1, x2, y2 = bbox
+        draw.rectangle([x1, y1, x2, y2], outline="lime", width=2)
+        
+        img_pil.save(output_path)
+        logger.info(f"디버그 이미지 저장 완료: {output_path}")
+    except Exception as e:
+        logger.error(f"디버그 이미지 저장 실패: {e}")
 
 
 @router.post("", response_model=JobCreateResponse)
@@ -190,6 +217,28 @@ async def generate_initial_mask(job_id: str, request: InitialMaskRequest):
                 }
             )
         
+        # --- START: Debugging code ---
+        try:
+            debug_img_path = os.path.join(TEMP_ROOT, f"{job_id}_slice_{request.slice_index}_debug.png")
+            processor = MedicalImageProcessor()
+            volume_data, _ = processor.load_nifti(volume_path)
+            
+            if 0 <= request.slice_index < volume_data.shape[0]:
+                target_slice = volume_data[request.slice_index]
+                bbox_coords = [
+                    request.bounding_box.x1,
+                    request.bounding_box.y1,
+                    request.bounding_box.x2,
+                    request.bounding_box.y2,
+                ]
+                
+                _save_debug_image_with_bbox(target_slice, bbox_coords, debug_img_path)
+            else:
+                logger.warning(f"디버그 이미지 저장 안함: 슬라이스 인덱스 {request.slice_index}가 범위를 벗어남 (shape: {volume_data.shape})")
+        except Exception as e:
+            logger.error(f"디버그 이미지 생성 실패 (job {job_id}): {e}")
+        # --- END: Debugging code ---
+
         # GPU 자원 확인
         gpu_manager = get_gpu_manager()
         if not gpu_manager.can_accept_job("initial_mask"):

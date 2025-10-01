@@ -61,12 +61,34 @@ def _draw_box(img: np.ndarray, x1: Optional[float], y1: Optional[float], x2: Opt
 def _display_to_original_xy(img_state, slice_index: int, x_disp: int, y_disp: int) -> Tuple[int, int]:
     if img_state is None:
         return int(x_disp), int(y_disp)
-    
-    # 단순히 디스플레이 좌표를 원본 좌표로 그대로 사용
-    # 이미지가 90도 회전되어 표시되지만, 바운딩 박스는 원본 좌표계 기준으로 입력됨
-    x_orig = int(x_disp)
-    y_orig = int(y_disp)
-    return x_orig, y_orig
+
+    try:
+        # img_state는 (nibabel_image_object, volume_numpy_array) 튜플입니다.
+        img_obj, vol_data = img_state
+
+        # nibabel로 로드된 vol_data는 (W, H, D) 형태입니다.
+        original_w, original_h = vol_data.shape[0], vol_data.shape[1]
+
+        # 표시 변환(rot90+fliplr)으로 인해 프론트엔드에 표시되는 이미지(H, W)와
+        # 백엔드(SimpleITK)에서 사용하는 슬라이스(H, W)의 방향이 일치하게 되었습니다.
+        # 따라서, 사용자가 화면에서 보는 좌표는 별도의 변환 없이 그대로 백엔드에서 사용할 수 있습니다.
+        x_orig = int(x_disp)
+        y_orig = int(y_disp)
+
+        # 경계 검사
+        # 표시된 이미지의 크기는 (H, W) 이므로, x는 original_w(너비), y는 original_h(높이)를 기준으로 검사합니다.
+        x_orig = max(0, min(original_w - 1, x_orig))
+        y_orig = max(0, min(original_h - 1, y_orig))
+
+        print(f"[_display_to_original_xy] Display Coords (x,y): ({x_disp}, {y_disp}) -> Original Coords (x,y): ({x_orig}, {y_orig})")
+        print(f"[_display_to_original_xy] Original Slice Shape (W, H): ({original_w}, {original_h})")
+
+        return x_orig, y_orig
+
+    except Exception as e:
+        print(f"[_display_to_original_xy] Error in coordinate transformation: {e}")
+        # 에러 발생 시 기본 변환 사용
+        return int(x_disp), int(y_disp)
 
 
 def load_nifti(fileobj):
@@ -110,6 +132,7 @@ def show_slice(state, slice_index, x1=None, y1=None, x2=None, y2=None):
     img, vol = state
     slice_img = vol[:, :, slice_index]
     slice_img = np.rot90(slice_img, k=-1)
+    slice_img = np.fliplr(slice_img)
     vmin, vmax = np.percentile(slice_img, [1, 99])
     disp = np.clip((slice_img - vmin) / max(vmax - vmin, 1e-6), 0, 1)
     disp = _draw_box(disp, x1, y1, x2, y2)
@@ -360,14 +383,14 @@ with gr.Blocks(title="MedSAM2 3D 뷰어") as demo:
         slice_slider = gr.Slider(0, 0, value=0, step=1, label="슬라이스")
     with gr.Row():
         image = gr.Image(label="슬라이스", interactive=False, elem_id="slice_image")
-    with gr.Accordion("2D 분할 (중간 슬라이스)", open=True):
+    with gr.Accordion("2D 분할 (현재 슬라이스)", open=True):
         with gr.Row():
-            x1 = gr.Number(label="x1", value=200)
-            y1 = gr.Number(label="y1", value=265)
-            x2 = gr.Number(label="x2", value=240)
-            y2 = gr.Number(label="y2", value=310)
+            x1 = gr.Number(label="x1", value=40)
+            y1 = gr.Number(label="y1", value=200)
+            x2 = gr.Number(label="x2", value=150)
+            y2 = gr.Number(label="y2", value=280)
         with gr.Row():
-            seg_mid_btn = gr.Button("중간 슬라이스 2D 분할")
+            seg_btn = gr.Button("현재 슬라이스 2D 분할")
         with gr.Row():
             draw_help = gr.Markdown("")
     with gr.Accordion("3D Propagation (중간→양방향)", open=True):
@@ -379,12 +402,25 @@ with gr.Blocks(title="MedSAM2 3D 뷰어") as demo:
         result_link = gr.Markdown(visible=False)
 
     def on_upload(fileobj, x1v, y1v, x2v, y2v):
+        # load_nifti는 정규화된 볼륨(vol_disp)과 원본 데이터(state)를 모두 반환합니다.
+        # show_slice 함수와의 일관성을 위해 원본 데이터를 사용합니다.
         vol_disp, z, state = load_nifti(fileobj)
         if vol_disp is None:
             return gr.update(), gr.update(), None, None, None
+        
         mid = int(z // 2)
-        disp_mid = np.rot90(vol_disp[:, :, mid], k=-1)
+        
+        # state에서 원본 볼륨(vol)을 가져옵니다.
+        img, vol = state
+        disp_mid = vol[:, :, mid]
+        
+        # show_slice와 동일한 변환 및 정규화 적용
+        disp_mid = np.rot90(disp_mid, k=-1)
+        disp_mid = np.fliplr(disp_mid)
+        vmin, vmax = np.percentile(disp_mid, [1, 99])
+        disp_mid = np.clip((disp_mid - vmin) / max(vmax - vmin, 1e-6), 0, 1)
         disp_mid = _draw_box(disp_mid, x1v, y1v, x2v, y2v)
+        
         return (
             gr.update(minimum=0, maximum=z-1, value=mid),
             gr.update(value=disp_mid),
@@ -418,15 +454,19 @@ with gr.Blocks(title="MedSAM2 3D 뷰어") as demo:
     for ctrl in (x1, y1, x2, y2):
         ctrl.change(fn=update_box, inputs=[img_state, slice_slider, x1, y1, x2, y2], outputs=image)
 
-    def seg_middle(job_id, mid, x1v, y1v, x2v, y2v, img_state_v):
-        return trigger_segmentation(job_id, img_state_v, int(mid), x1v, y1v, x2v, y2v)
+    def seg_current_slice(job_id, slice_index, x1v, y1v, x2v, y2v, img_state_v):
+        """현재 슬라이스에 대해 2D 분할을 트리거합니다."""
+        return trigger_segmentation(job_id, img_state_v, int(slice_index), x1v, y1v, x2v, y2v)
 
-    seg_chain = seg_mid_btn.click(
-        fn=seg_middle,
-        inputs=[job_state, mid_state, x1, y1, x2, y2, img_state],
+    # 2D 분할 버튼 클릭 이벤트 체인
+    seg_chain = seg_btn.click(
+        fn=seg_current_slice,
+        inputs=[job_state, slice_slider, x1, y1, x2, y2, img_state],
         outputs=[status_box],
     )
-    seg_chain.then(fn=poll_segmentation, inputs=[job_state, mid_state, img_state], outputs=[image, status_box])
+    seg_chain.then(fn=poll_segmentation, inputs=[job_state, slice_slider, img_state], outputs=[image, status_box])
+    # 분할 완료 후, 분할된 슬라이스 번호를 3D 전파 섹션의 '초기 마스크 슬라이스' 입력창에 업데이트
+    seg_chain.then(fn=lambda s: s, inputs=[slice_slider], outputs=[init_slice])
 
     def start_prop(job_id, s, e, init_si, mid, z_total):
         # 기본값 설정: 전체 볼륨 범위 사용
@@ -444,14 +484,21 @@ with gr.Blocks(title="MedSAM2 3D 뷰어") as demo:
         return trigger_propagation(job_id, s, e, init_si)
 
     def poll3(job_id):
+        """3D 전파 작업의 진행률을 폴링하고 UI를 업데이트합니다."""
         progress = gr.Progress(track_tqdm=False)
+        final_url = None
+        final_msg = "실패 또는 타임아웃"
+        
         for prog, msg, url in poll_propagation(job_id):
-            progress(prog)
-        st = requests.get(f"{API_BASE}/api/v1/jobs/{job_id}/status", timeout=5).json()
-        if st.get("status") == "COMPLETED" and st.get("result_url"):
-            url = st.get("result_url")
-            return gr.update(value=f"[3D 마스크 다운로드]({url})", visible=True), "완료"
-        return gr.update(visible=False), "실패 또는 타임아웃"
+            progress(prog / 100, desc=msg)
+            if url:
+                final_url = url
+            final_msg = msg
+        
+        if final_url:
+            return gr.update(value=f"[3D 마스크 다운로드]({final_url})", visible=True), "✅ 3D 전파 완료!"
+        else:
+            return gr.update(visible=False), final_msg
 
     prop_chain = run_3d.click(fn=start_prop, inputs=[job_state, start_slice, end_slice, init_slice, mid_state, z_state], outputs=[status_box])
     prop_chain.then(fn=poll3, inputs=[job_state], outputs=[result_link, status_box])
