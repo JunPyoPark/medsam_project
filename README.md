@@ -12,6 +12,9 @@
 - [시스템 아키텍처](#️-시스템-아키텍처)
 - [빠른 시작](#-빠른-시작)
 - [설치 및 설정](#️-설치-및-설정)
+  - [방법 1: Docker 사용](#방법-1-docker-사용-권장)
+  - [방법 2: 로컬 설치](#방법-2-로컬-설치-docker-없이)
+- [설치 확인](#-설치-확인)
 - [사용법](#-사용법)
 - [프로젝트 구조](#-프로젝트-구조)
 - [API 엔드포인트](#-api-엔드포인트)
@@ -87,7 +90,7 @@ MedSAM2는 2D 및 3D 의료 영상을 분할하기 위한 최첨단 파운데이
                                            ▼
                                    ┌─────────────────┐
                                    │   Celery Worker │
-                                   │   (AI Processing)│
+                                   │  (AI Processing)│
                                    └─────────────────┘
 ```
 
@@ -130,7 +133,62 @@ MedSAM2는 2D 및 3D 의료 영상을 분할하기 위한 최첨단 파운데이
 - CUDA Toolkit
 - NVIDIA Container Toolkit (Docker 사용 시)
 
-### 1. 서비스 시작
+### 설치 방법 선택
+- **방법 1: Docker 사용** - 권장, 환경 설정이 간단함
+- **방법 2: 로컬 설치** - Docker 없이 직접 설치
+
+> 자세한 설치 방법은 아래 [설치 및 설정](#️-설치-및-설정) 섹션을 참고하세요.
+
+### 1. 초기 설정 (최초 1회만) - 간략 버전
+
+**Docker 방식 (프로덕션):**
+```bash
+# 1. 시스템 준비 (Docker, NVIDIA 드라이버 등)
+# 2. 프로젝트 클론
+git clone https://github.com/junpyopark/medsam_project.git
+cd medsam_project
+
+# 3. MedSAM2 클론 (빌드에 필요)
+git clone https://github.com/bowang-lab/MedSAM2.git
+
+# 4. 디렉토리 생성
+mkdir -p data temp models
+
+# 5. Docker Compose 빌드 및 실행
+docker-compose up --build -d
+
+# 6. Gradio 실행 (별도 터미널)
+python3.10 -m venv .venv
+source .venv/bin/activate
+pip install -r medsam_gradio_viewer/requirements.txt
+python medsam_gradio_viewer/app.py
+```
+
+> **참고**: 프로덕션 모드에서 MedSAM2는 빌드 시점에 이미지에 포함되므로, 
+> 빌드 후에는 로컬의 MedSAM2 폴더를 삭제해도 됩니다.
+
+**로컬 방식:**
+```bash
+# 1. 시스템 준비 (Python, Redis, NVIDIA 드라이버 등)
+# 2. 프로젝트 클론
+git clone https://github.com/junpyopark/medsam_project.git
+cd medsam_project
+git clone https://github.com/bowang-lab/MedSAM2.git
+
+# 3. 가상환경 및 설치
+python3.10 -m venv .venv
+source .venv/bin/activate
+mkdir -p data temp models
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+pip install -r medsam_api_server/requirements.txt
+pip install -r medsam_gradio_viewer/requirements.txt
+cd MedSAM2 && pip install -e . && cd ..
+
+# 4. 서비스 시작
+./scripts/start.sh
+```
+
+### 2. 서비스 시작 (이미 설치된 경우)
 ```bash
 cd /home/junpyo/projects/medsam_project
 
@@ -141,7 +199,7 @@ source .venv/bin/activate
 ./scripts/start.sh
 ```
 
-### 2. 웹 접속
+### 3. 웹 접속
 - **Gradio UI** (사용자 인터페이스): http://127.0.0.1:7860
 - **API 서버** (루트): http://127.0.0.1:8000
 - **API 문서** (Swagger UI): http://127.0.0.1:8000/docs
@@ -149,7 +207,7 @@ source .venv/bin/activate
 - **Health Check**: http://127.0.0.1:8000/health
 - **Celery 모니터** (Flower): http://127.0.0.1:5556
 
-### 3. 기본 사용 흐름
+### 4. 기본 사용 흐름
 
 #### Step 1: NIfTI 파일 업로드
 1. 브라우저에서 http://127.0.0.1:7860 접속
@@ -172,7 +230,145 @@ source .venv/bin/activate
 
 ## 🛠️ 설치 및 설정
 
+### 📋 새 서버 완전 설치 체크리스트
+
+**새 서버에 처음 설치하는 경우, 이 체크리스트를 따라 진행하세요:**
+
+#### 설치 전 준비
+- [ ] Ubuntu 20.04/22.04 서버 준비
+- [ ] sudo 권한 확보
+- [ ] 인터넷 연결 확인
+- [ ] 디스크 공간 20GB 이상 확보
+
+#### 시스템 설정 (Docker 방식)
+- [ ] 시스템 업데이트: `sudo apt-get update && sudo apt-get upgrade -y`
+- [ ] Docker 설치: `curl -fsSL https://get.docker.com | sudo sh`
+- [ ] Docker 그룹 추가: `sudo usermod -aG docker $USER`
+- [ ] 로그아웃 후 재로그인 (또는 `newgrp docker`)
+- [ ] Docker 버전 확인: `docker --version`
+- [ ] GPU 사용 시: NVIDIA 드라이버 설치 후 재부팅
+- [ ] GPU 사용 시: nvidia-container-toolkit 설치
+
+#### 프로젝트 설정
+- [ ] 프로젝트 클론: `git clone https://github.com/junpyopark/medsam_project.git`
+- [ ] 프로젝트 폴더 이동: `cd medsam_project`
+- [ ] **⚠️ 중요**: MedSAM2 클론: `git clone https://github.com/bowang-lab/MedSAM2.git`
+- [ ] MedSAM2 확인: `ls MedSAM2/setup.py` (파일이 있어야 함)
+- [ ] 디렉토리 생성: `mkdir -p data temp models`
+- [ ] 모델 다운로드 (선택): `chmod +x scripts/download_models.sh && ./scripts/download_models.sh`
+
+#### Docker 빌드 및 실행
+- [ ] 빌드 시작: `docker-compose up --build -d` (10-20분 소요)
+- [ ] 별도 터미널에서 빌드 로그 확인: `docker-compose logs -f api`
+- [ ] 빌드 완료 대기 (에러 없이 완료되어야 함)
+- [ ] 컨테이너 상태 확인: `docker-compose ps` (모두 "Up" 상태)
+
+#### Gradio 프론트엔드 실행
+- [ ] 새 터미널 열기
+- [ ] 가상환경 생성: `python3.10 -m venv .venv`
+- [ ] 가상환경 활성화: `source .venv/bin/activate`
+- [ ] 의존성 설치: `pip install -r medsam_gradio_viewer/requirements.txt`
+- [ ] Gradio 실행: `python medsam_gradio_viewer/app.py`
+
+#### 설치 확인
+- [ ] API 서버: `curl http://localhost:8000/health`
+- [ ] Redis: `docker-compose exec api redis-cli -h redis ping`
+- [ ] GPU (GPU 사용 시): `docker-compose exec worker nvidia-smi`
+- [ ] MedSAM2 모듈: `docker-compose exec worker python -c "import sam2"`
+- [ ] Gradio UI: 브라우저에서 `http://서버IP:7860` 접속
+- [ ] Flower: 브라우저에서 `http://서버IP:5556` 접속
+
+#### 방화벽 설정 (외부 접속 필요 시)
+- [ ] 포트 오픈: `sudo ufw allow 7860,8000,5556/tcp`
+
+**모든 체크 완료 시 설치 성공! 🎉**
+
+---
+
+### 📝 새 서버 설치 체크리스트
+
+설치 전에 다음 항목들을 확인하세요:
+
+- [ ] OS: Ubuntu 20.04/22.04 또는 Debian 기반 시스템
+- [ ] Python 3.10+ 설치 가능 여부
+- [ ] 인터넷 연결 (패키지 다운로드용)
+- [ ] sudo 권한 보유
+- [ ] 디스크 공간: 최소 20GB 이상 권장
+- [ ] GPU 사용 시: NVIDIA GPU 및 드라이버
+- [ ] 네트워크: 방화벽에서 포트 6379, 7860, 8000, 5556 오픈 필요
+
 ### 방법 1: Docker 사용 (권장)
+
+> **새로운 서버에 처음 설치하는 경우를 기준으로 작성되었습니다.**
+
+#### 0. 시스템 준비 (Ubuntu/Debian 기준)
+
+**기본 패키지 설치:**
+```bash
+# 시스템 업데이트
+sudo apt-get update
+sudo apt-get upgrade -y
+
+# 필수 패키지 설치
+sudo apt-get install -y \
+    git \
+    curl \
+    wget \
+    build-essential \
+    python3.10 \
+    python3.10-venv \
+    python3-pip
+```
+
+**Docker 및 Docker Compose 설치:**
+```bash
+# Docker 설치
+curl -fsSL https://get.docker.com -o get-docker.sh
+sudo sh get-docker.sh
+
+# 현재 사용자를 docker 그룹에 추가 (sudo 없이 docker 실행)
+sudo usermod -aG docker $USER
+
+# Docker Compose 설치
+sudo apt-get install -y docker-compose-plugin
+
+# Docker 서비스 시작
+sudo systemctl start docker
+sudo systemctl enable docker
+
+# 설치 확인
+docker --version
+docker compose version
+```
+
+**NVIDIA GPU 사용 시 (선택):**
+```bash
+# NVIDIA 드라이버 설치 (예: 535 버전)
+sudo apt-get install -y nvidia-driver-535
+
+# 재부팅
+sudo reboot
+
+# 드라이버 확인
+nvidia-smi
+
+# NVIDIA Container Toolkit 설치
+distribution=$(. /etc/os-release;echo $ID$VERSION_ID)
+curl -s -L https://nvidia.github.io/nvidia-docker/gpgkey | sudo apt-key add -
+curl -s -L https://nvidia.github.io/nvidia-docker/$distribution/nvidia-docker.list | \
+    sudo tee /etc/apt/sources.list.d/nvidia-docker.list
+
+sudo apt-get update
+sudo apt-get install -y nvidia-container-toolkit
+
+# Docker 재시작
+sudo systemctl restart docker
+
+# GPU 접근 테스트
+docker run --rm --gpus all nvidia/cuda:12.1.1-base-ubuntu22.04 nvidia-smi
+```
+
+> **참고**: 로그아웃 후 다시 로그인해야 docker 그룹 권한이 적용됩니다.
 
 #### 1. 프로젝트 클론
 ```bash
@@ -180,10 +376,48 @@ git clone https://github.com/junpyopark/medsam_project.git
 cd medsam_project
 ```
 
-#### 2. MedSAM2 모델 다운로드
+#### 2. MedSAM2 저장소 클론
+**⚠️ 필수: MedSAM2가 없으면 Docker 빌드가 실패합니다!**
+```bash
+# medsam_project 폴더 안에서 실행
+git clone https://github.com/bowang-lab/MedSAM2.git
+
+# 클론 확인
+ls -la MedSAM2
+# README.md, medsam2/ 등이 보여야 함
+```
+
+**디렉토리 구조 확인:**
+```
+medsam_project/
+├── MedSAM2/          # ← 🔴 필수! Docker 빌드 시 이미지에 포함됨
+│   ├── medsam2/
+│   ├── README.md
+│   └── setup.py
+├── data/
+├── models/
+└── ...
+```
+
+> **중요**: 
+> - **프로덕션 모드**: MedSAM2는 빌드 시 이미지에 포함되므로, 빌드 후 삭제 가능
+> - **개발 모드**: MedSAM2가 볼륨 마운트되므로 항상 필요 (docker-compose.yml 수정 필요)
+> - **빌드 전 체크**: `ls MedSAM2/setup.py` 명령어로 파일 존재 확인!
+
+#### 3. 필요한 디렉토리 생성
+```bash
+# medsam_project 폴더 안에서 실행
+mkdir -p data temp models
+
+# 권한 설정 (필요시)
+chmod 755 data temp models
+```
+
+#### 4. MedSAM2 모델 다운로드
 
 **자동 다운로드 (권장)**
 ```bash
+chmod +x scripts/download_models.sh
 ./scripts/download_models.sh
 ```
 
@@ -199,15 +433,20 @@ medsam_project/
     └── sam2.1_hiera_t512.yaml
 ```
 
-#### 3. Docker Compose로 백엔드 실행
+#### 5. Docker Compose로 백엔드 실행
 ```bash
 # Docker 이미지를 빌드하고 백엔드 서비스 실행
+# 주의: 빌드에 시간이 오래 걸릴 수 있습니다 (10-20분)
 docker-compose up --build -d
 
-# 서비스 상태 확인
-docker-compose ps
+# 빌드 진행 상황 확인 (별도 터미널)
+docker-compose logs -f api
 
-# 로그 확인
+# 빌드 완료 후 서비스 상태 확인
+docker-compose ps
+# 모든 서비스가 "Up" 상태여야 함
+
+# 전체 로그 확인
 docker-compose logs -f
 ```
 
@@ -217,16 +456,33 @@ docker-compose logs -f
 - **worker**: Celery Worker (GPU 처리, concurrency=1)
 - **monitor**: Flower 모니터링 대시보드 (포트 5556:5555)
 
+> **중요 - 프로덕션 모드 vs 개발 모드**:
+> 
+> **현재 설정: 프로덕션 모드 (권장)**
+> - MedSAM2와 코드가 Docker 이미지에 포함됨
+> - 코드 수정 시 이미지 재빌드 필요: `docker-compose up --build -d`
+> - 안정적이고 배포에 적합
+> 
+> **개발 모드로 전환하려면**:
+> `docker-compose.yml`에서 다음 줄의 주석을 해제:
+> ```yaml
+> volumes:
+>   - ./MedSAM2:/app/MedSAM2              # 로컬 MedSAM2 사용
+>   - ./medsam_api_server:/app/medsam_api_server  # 로컬 코드 사용
+> ```
+> - 코드 수정이 즉시 반영됨 (서비스 재시작만 필요)
+> - 로컬에 MedSAM2가 클론되어 있어야 함
+
 > **참고**: 
 > - Redis는 Docker 내부에서 6379 포트, 호스트에서는 6380 포트로 접근합니다.
 > - 모든 서비스는 GPU 컨테이너로 실행되며 NVIDIA GPU가 필요합니다.
-> - 볼륨 마운트를 통해 `data/`, `models/`, `temp/` 디렉토리를 공유합니다.
+> - 데이터, 모델, 임시 파일만 볼륨 마운트됩니다.
 
-#### 4. Gradio 프론트엔드 실행 (로컬)
+#### 6. Gradio 프론트엔드 실행 (로컬)
 새 터미널에서:
 ```bash
 # 가상환경 생성 및 활성화
-python -m venv .venv
+python3.10 -m venv .venv
 source .venv/bin/activate
 
 # 의존성 설치
@@ -236,18 +492,107 @@ pip install -r medsam_gradio_viewer/requirements.txt
 python medsam_gradio_viewer/app.py
 ```
 
-### 방법 2: 로컬 설치
-
-#### 1. 가상환경 설정
+#### 7. 방화벽 설정 (선택)
+외부에서 접속이 필요한 경우:
 ```bash
-python -m venv .venv
-source .venv/bin/activate  # Linux/Mac
-# 또는
-.venv\Scripts\activate     # Windows
+# UFW 사용 시
+sudo ufw allow 7860/tcp  # Gradio
+sudo ufw allow 8000/tcp  # FastAPI
+sudo ufw allow 5556/tcp  # Flower
+sudo ufw allow 6380/tcp  # Redis (Docker)
+
+# 또는 특정 IP만 허용
+sudo ufw allow from 192.168.1.0/24 to any port 7860
 ```
 
-#### 2. 의존성 설치
+**완료!** 
+- 로컬: http://127.0.0.1:7860
+- 원격: http://서버IP:7860
+
+---
+
+### 방법 2: 로컬 설치 (Docker 없이)
+
+> **새로운 서버에 처음 설치하는 경우를 기준으로 작성되었습니다.**
+
+#### 0. 시스템 준비 (Ubuntu/Debian 기준)
+
+**기본 패키지 설치:**
 ```bash
+# 시스템 업데이트
+sudo apt-get update
+sudo apt-get upgrade -y
+
+# 필수 패키지 설치
+sudo apt-get install -y \
+    git \
+    curl \
+    wget \
+    build-essential \
+    python3.10 \
+    python3.10-venv \
+    python3.10-dev \
+    python3-pip \
+    redis-server
+
+# Redis 시작 및 자동 시작 설정
+sudo systemctl start redis-server
+sudo systemctl enable redis-server
+
+# Redis 동작 확인
+redis-cli ping  # 응답: PONG
+```
+
+**NVIDIA GPU 사용 시 (선택):**
+```bash
+# NVIDIA 드라이버 설치
+sudo apt-get install -y nvidia-driver-535
+
+# CUDA Toolkit 설치 (필요시)
+wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.0-1_all.deb
+sudo dpkg -i cuda-keyring_1.0-1_all.deb
+sudo apt-get update
+sudo apt-get install -y cuda-toolkit-12-1
+
+# 재부팅 후 확인
+sudo reboot
+nvidia-smi
+```
+
+#### 1. 프로젝트 클론 및 MedSAM2 설정
+```bash
+# 프로젝트 클론
+git clone https://github.com/junpyopark/medsam_project.git
+cd medsam_project
+
+# MedSAM2 저장소 클론 (프로젝트 폴더 안)
+git clone https://github.com/bowang-lab/MedSAM2.git
+```
+
+#### 2. 가상환경 설정 및 활성화
+```bash
+# medsam_project 폴더 안에서 실행
+python3.10 -m venv .venv
+source .venv/bin/activate
+
+# pip 업그레이드
+pip install --upgrade pip
+```
+
+#### 3. 필요한 디렉토리 생성
+```bash
+mkdir -p data temp models
+chmod 755 data temp models
+```
+
+#### 4. 의존성 설치
+```bash
+# PyTorch 먼저 설치 (GPU 버전)
+pip install torch==2.3.1 torchvision==0.18.1 torchaudio==2.3.1 --index-url https://download.pytorch.org/whl/cu121
+
+# 또는 CPU 버전만 (GPU 없는 경우)
+# pip install torch==2.3.1 torchvision==0.18.1 torchaudio==2.3.1
+
 # 백엔드 의존성
 pip install -r medsam_api_server/requirements.txt
 
@@ -255,34 +600,149 @@ pip install -r medsam_api_server/requirements.txt
 pip install -r medsam_gradio_viewer/requirements.txt
 ```
 
-#### 3. Redis 설치 및 실행
+#### 5. MedSAM2 설치
 ```bash
-# Ubuntu/Debian
-sudo apt-get install redis-server
-sudo systemctl start redis
+# MedSAM2 디렉토리로 이동하여 설치
+cd MedSAM2
+pip install -e .
+cd ..
 
-# macOS (Homebrew)
-brew install redis
-brew services start redis
-
-# 또는 Docker로 실행
-docker run -d -p 6379:6379 redis:alpine
+# 설치 확인
+python -c "import sam2; print('✅ MedSAM2 설치 완료')"
 ```
 
-#### 4. 서비스 시작
+#### 6. 모델 다운로드
 ```bash
-# 모든 서비스 시작
+chmod +x scripts/download_models.sh
+./scripts/download_models.sh
+```
+
+#### 7. 스크립트 실행 권한 설정
+```bash
+chmod +x scripts/*.sh
+```
+
+#### 8. 서비스 시작
+```bash
+# 스크립트를 이용한 자동 시작
 ./scripts/start.sh
 
-# 또는 개별 실행
-# Redis가 이미 실행 중이라면
+# 또는 수동 실행
+# 터미널 1: FastAPI 서버
 cd medsam_api_server
 uvicorn main:app --host 0.0.0.0 --port 8000 &
+
+# 터미널 2: Celery Worker
+cd medsam_api_server
 celery -A celery_app worker --loglevel=info &
 
-cd ../medsam_gradio_viewer
+# 터미널 3: Gradio UI
+cd medsam_gradio_viewer
 python app.py
 ```
+
+#### 9. 방화벽 설정 (선택)
+외부에서 접속이 필요한 경우:
+```bash
+# UFW 사용 시
+sudo ufw allow 7860/tcp  # Gradio
+sudo ufw allow 8000/tcp  # FastAPI
+sudo ufw allow 5556/tcp  # Flower (선택)
+
+# 또는 특정 IP만 허용
+sudo ufw allow from 192.168.1.0/24 to any port 7860
+```
+
+**완료!** 이제 브라우저에서 `http://서버IP:7860` 으로 접속하세요.
+
+---
+
+## ✅ 설치 확인
+
+설치가 완료되면 다음 명령어들로 정상 작동을 확인하세요:
+
+### Docker 방식
+
+#### 1단계: 컨테이너 상태 확인
+```bash
+docker-compose ps
+
+# 예상 출력:
+# NAME              IMAGE              STATUS         PORTS
+# medsam2_api       ...                Up             0.0.0.0:8000->8000/tcp
+# medsam2_worker    ...                Up             
+# medsam2_redis     redis:7-alpine     Up (healthy)   0.0.0.0:6380->6379/tcp
+# medsam2_monitor   ...                Up             0.0.0.0:5556->5555/tcp
+```
+
+**문제 발생 시:**
+- `Restarting` 상태: 로그 확인 `docker-compose logs api`
+- `Exit 1`: 빌드 오류, `docker-compose up --build -d` 재실행
+- `Unhealthy`: 헬스체크 실패, 서비스 시작 대기 (1-2분)
+
+#### 2단계: API 서버 확인
+```bash
+curl http://localhost:8000/health
+
+# 예상 출력:
+# {
+#   "success": true,
+#   "message": "Service is healthy",
+#   "system_info": { ... }
+# }
+```
+
+#### 3단계: Redis 연결 확인
+```bash
+docker-compose exec api redis-cli -h redis ping
+# 예상 출력: PONG
+```
+
+#### 4단계: GPU 확인 (GPU 사용 시)
+```bash
+docker-compose exec worker nvidia-smi
+
+# GPU 정보가 표시되어야 함
+# 에러 발생 시: GPU 설정 문제
+```
+
+#### 5단계: MedSAM2 모듈 확인
+```bash
+docker-compose exec worker python -c "import sam2; print('✅ MedSAM2 loaded')"
+
+# 예상 출력: ✅ MedSAM2 loaded
+# ImportError 발생 시: 빌드 문제
+```
+
+#### 6단계: Gradio UI 확인
+```bash
+curl -s http://localhost:7860 | head -20
+# HTML 응답이 와야 함 (<!DOCTYPE html>...)
+
+# 또는 브라우저에서
+# http://서버IP:7860
+```
+
+### 로컬 방식
+```bash
+# Redis 확인
+redis-cli ping
+# PONG 응답이 와야 함
+
+# API 서버 확인
+curl http://localhost:8000/health
+
+# GPU 확인 (GPU 사용 시)
+nvidia-smi
+
+# 서비스 상태 확인
+./scripts/status.sh
+```
+
+### 웹 브라우저 확인
+1. **Gradio UI**: http://서버IP:7860 - 업로드 화면이 보여야 함
+2. **API 문서**: http://서버IP:8000/docs - Swagger UI가 열려야 함
+3. **Flower**: http://서버IP:5556 - Celery 대시보드가 보여야 함
 
 ---
 
@@ -326,7 +786,7 @@ python app.py
 
 ```
 medsam_project/
-├── MedSAM2/                       # MedSAM2 Git Submodule
+├── MedSAM2/                       # MedSAM2 저장소 (별도 클론 필요)
 ├── data/                          # 업로드된 원본 NIfTI 파일 ({job_id}/ 별로 저장)
 ├── temp/                          # 생성된 마스크, 임시 파일
 ├── models/                        # MedSAM2 모델 가중치 (.pt, .yaml)
@@ -483,6 +943,7 @@ docker-compose logs -f redis
 
 ### 코드 수정 후 재시작
 
+#### 로컬 개발 시
 ```bash
 # 프론트엔드 수정 후
 ./scripts/restart.sh gradio
@@ -492,354 +953,4 @@ docker-compose logs -f redis
 
 # Celery 작업 수정 후
 ./scripts/restart.sh celery
-
-# Docker 사용 시
-docker-compose restart api
-docker-compose restart worker
 ```
-
-### 디버깅
-
-```bash
-# 실시간 로그 모니터링
-./scripts/logs.sh all 100 | grep -i error
-
-# 특정 서비스만 모니터링
-tail -f /tmp/api.log | grep -i error
-tail -f /tmp/celery.log | grep -i error
-
-# 프로세스 확인
-ps aux | grep -E '(uvicorn|celery|gradio)'
-
-# 포트 사용 확인
-netstat -tlnp | grep -E ':(6379|8000|7860|5556)'
-```
-
-### 시스템 모니터링
-
-```bash
-# Flower를 통한 Celery 모니터링
-open http://127.0.0.1:5556  # 또는 브라우저에서 접속
-
-# API를 통한 시스템 상태 확인
-curl http://127.0.0.1:8000/health | jq
-curl http://127.0.0.1:8000/api/v1/system/status | jq
-curl http://127.0.0.1:8000/api/v1/system/gpu | jq
-curl http://127.0.0.1:8000/api/v1/system/jobs/active | jq
-
-# GPU 사용량 확인
-nvidia-smi  # 로컬
-docker exec medsam2_worker nvidia-smi  # Docker
-```
-
-### 기여 가이드
-
-#### 브랜치 전략
-1. 새 브랜치 생성: `git checkout -b feature/새기능명`
-2. 코드 수정 및 테스트
-3. 커밋: `git commit -m "feat: 새 기능 추가"`
-4. 메인 브랜치로 병합
-
-#### 테스트 절차
-```bash
-# 서비스 재시작
-./scripts/restart.sh
-
-# 로그 확인
-./scripts/logs.sh
-
-# 상태 확인
-./scripts/status.sh
-
-# 기능 테스트
-# 1. Gradio UI 접속 (http://127.0.0.1:7860)
-# 2. 파일 업로드 테스트
-# 3. 2D 분할 테스트
-# 4. 3D 전파 테스트
-```
-
----
-
-## 🔍 문제 해결
-
-### 서비스가 시작되지 않는 경우
-
-```bash
-# 상태 확인
-./scripts/status.sh
-
-# 로그 확인
-./scripts/logs.sh
-
-# 강제 재시작
-./scripts/stop.sh
-./scripts/start.sh
-
-# 프로세스 강제 종료
-sudo kill -9 $(pgrep -f uvicorn)
-sudo kill -9 $(pgrep -f celery)
-sudo kill -9 $(pgrep -f gradio)
-```
-
-### 포트 충돌 시
-
-```bash
-# 포트 사용 확인
-netstat -tlnp | grep -E ':(6379|6380|8000|7860|5556)'
-
-# 특정 포트 사용 프로세스 확인
-lsof -i :8000   # FastAPI
-lsof -i :7860   # Gradio
-lsof -i :6379   # Redis (로컬)
-lsof -i :6380   # Redis (Docker)
-lsof -i :5556   # Flower
-
-# 프로세스 종료
-sudo kill -9 <PID>
-```
-
-### Redis 연결 오류
-
-```bash
-# Redis 상태 확인
-redis-cli ping
-# 응답: PONG (정상)
-
-# Redis 재시작
-sudo systemctl restart redis
-
-# Redis 로그 확인
-sudo journalctl -u redis -n 50
-
-# Docker 사용 시
-docker-compose restart redis
-docker-compose logs -f redis
-```
-
-### 파일 업로드 실패
-
-- NIfTI 파일 형식 확인 (.nii.gz)
-- 파일 크기 확인 (너무 큰 파일은 시간 소요)
-- `data/` 디렉토리 권한 확인
-- API 서버 로그 확인: `tail -f /tmp/api.log`
-
-### 분할 실패
-
-- 좌표 범위 확인 (이미지 크기 내)
-- GPU 메모리 확인 (CUDA out of memory)
-- Celery Worker 로그 확인: `tail -f /tmp/celery.log`
-- 모델 파일 존재 확인: `ls -la models/`
-
-### Gradio 접속 불가
-
-```bash
-# 포트 7860이 사용 중인지 확인
-lsof -i :7860
-
-# 방화벽 설정 확인
-sudo ufw status
-
-# Gradio 로그 확인
-tail -f /tmp/gradio.log
-
-# 프로세스 확인
-ps aux | grep gradio
-```
-
-**참고**: 
-- 현재 Gradio는 `share=False`로 설정되어 로컬 접속만 가능합니다.
-- 외부 접속이 필요한 경우 `medsam_gradio_viewer/app.py`에서 `share=True`로 변경하세요.
-- `share=True` 활성화 시 Gradio가 자동으로 공개 URL을 생성합니다.
-
-### Docker 관련 문제
-
-```bash
-# Docker 이미지 재빌드
-docker-compose build --no-cache
-
-# 볼륨 마운트 확인
-docker-compose config
-
-# 컨테이너 내부 접속
-docker-compose exec api bash
-docker-compose exec worker bash
-
-# 컨테이너 로그 실시간 확인
-docker-compose logs -f worker
-
-# NVIDIA GPU 설정 확인
-docker run --rm --gpus all nvidia/cuda:11.8.0-base-ubuntu22.04 nvidia-smi
-
-# Redis 연결 테스트 (Docker)
-docker-compose exec api redis-cli -h redis ping
-```
-
-### GPU 관련 문제
-
-```bash
-# GPU 사용 가능 여부 확인
-nvidia-smi
-
-# Docker에서 GPU 접근 확인
-docker run --rm --gpus all nvidia/cuda:11.8.0-base-ubuntu22.04 nvidia-smi
-
-# NVIDIA Container Toolkit 설치 확인
-dpkg -l | grep nvidia-container-toolkit
-
-# GPU 메모리 부족 시
-# docker-compose.yml에서 GPU_MEMORY_LIMIT 값 조정 (예: 0.6)
-# 또는 MAX_CONCURRENT_JOBS 값을 1로 감소
-
-# Worker 컨테이너에서 GPU 확인
-docker-compose exec worker nvidia-smi
-docker-compose exec worker python -c "import torch; print(torch.cuda.is_available())"
-```
-
-### 일반적인 문제 체크리스트
-
-1. ✅ Redis 서버가 실행 중인가? (`redis-cli ping` 또는 `docker-compose ps`)
-2. ✅ 가상환경이 활성화되어 있는가? (로컬 실행 시)
-3. ✅ 모든 의존성이 설치되어 있는가?
-4. ✅ 포트가 이미 사용 중이지 않은가? (6379/6380, 8000, 7860, 5556)
-5. ✅ 필요한 디렉토리(`data/`, `temp/`, `models/`)가 존재하는가?
-6. ✅ 모델 파일이 올바른 위치에 있는가? (`models/MedSAM2_latest.pt`, `models/sam2.1_hiera_t512.yaml`)
-7. ✅ 로그 파일에 에러 메시지가 있는가?
-8. ✅ GPU가 사용 가능한가? (`nvidia-smi` 실행 확인)
-9. ✅ Docker를 사용 중이라면 모든 컨테이너가 정상 실행 중인가? (`docker-compose ps`)
-10. ✅ API 서버가 정상 응답하는가? (`curl http://127.0.0.1:8000/health`)
-
-### 서비스 완전 정리
-
-```bash
-# 모든 서비스 중지
-./scripts/stop.sh
-
-# 로그 파일 정리
-rm -f /tmp/api.log /tmp/celery.log /tmp/gradio.log
-
-# 데이터 정리 (주의: 업로드된 파일 삭제됨!)
-rm -rf data/*
-rm -rf temp/*
-
-# Docker 사용 시
-docker-compose down -v  # 볼륨까지 삭제
-docker system prune -a  # 미사용 이미지/컨테이너 정리
-```
-
----
-
-## 🔧 주요 기술 스택
-
-### 프론트엔드
-- **Gradio 4.44.1**: 웹 UI 프레임워크
-- **NumPy**: 수치 계산
-- **Nibabel**: NIfTI 파일 처리
-
-### 백엔드
-- **FastAPI**: 웹 API 프레임워크
-- **Celery**: 비동기 작업 큐
-- **Redis 7**: 메시지 브로커 및 캐시
-- **Uvicorn**: ASGI 서버
-- **Pydantic**: 데이터 검증 및 설정 관리
-- **Flower**: Celery 모니터링 대시보드
-
-### 의료영상 처리
-- **MedSAM2**: 의료영상 분할 AI 모델 (3D/4D 분할)
-- **PyTorch**: 딥러닝 프레임워크
-- **Nibabel**: NIfTI 파일 읽기/쓰기
-- **SimpleITK**: 의료 영상 처리
-- **NumPy**: 배열 연산
-- **SciPy**: 과학 계산
-
-### 인프라
-- **Docker & Docker Compose**: 컨테이너화 및 오케스트레이션
-- **NVIDIA Container Toolkit**: GPU 지원
-- **CUDA**: GPU 가속
-
----
-
-## 🚨 주의사항
-
-### 파일 처리
-- **입력**: NIfTI (.nii.gz) 파일만 지원
-- **출력**: 3D 마스크 (.nii.gz) 파일
-- **저장**: `data/{job_id}/` 디렉토리에 저장
-- **보안**: 민감한 의료 데이터는 적절한 보안 조치 필요
-
-### 좌표 시스템
-- **표시 좌표**: 90도 회전된 이미지 기준 (UI)
-- **서버 좌표**: 원본 이미지 기준 (백엔드)
-- **자동 변환**: 프론트엔드에서 자동 처리
-
-### 성능 최적화
-- GPU 사용 시 처리 속도 향상
-- 대용량 파일은 처리 시간 증가
-- Celery Worker 수를 조절하여 병렬 처리 가능
-
-### 환경 변수 설정
-Docker Compose 또는 로컬 실행 시 다음 환경 변수를 설정할 수 있습니다:
-
-**필수 환경 변수:**
-- `CELERY_BROKER_URL`: Redis 브로커 URL (기본값: `redis://localhost:6379/0`)
-- `CELERY_RESULT_BACKEND`: Redis 결과 백엔드 URL (기본값: `redis://localhost:6379/1`)
-- `DATA_ROOT`: 업로드 파일 저장 경로 (기본값: `/app/data`)
-- `MODEL_ROOT`: 모델 파일 경로 (기본값: `/app/models`)
-- `TEMP_ROOT`: 임시 파일 경로 (기본값: `/app/temp`)
-
-**선택 환경 변수:**
-- `GPU_MEMORY_LIMIT`: GPU 메모리 사용량 제한 (기본값: `0.8`, 80%)
-- `MAX_CONCURRENT_JOBS`: 동시 처리 작업 수 (기본값: `2`)
-- `CORS_ORIGIN`: CORS 허용 오리진 (기본값: `*`)
-
----
-
-## 📄 라이선스
-
-이 프로젝트는 MIT 라이선스 하에 배포됩니다.
-
----
-
-## 💡 사용 팁
-
-### 최적의 성능을 위한 권장 사항
-
-1. **좌표 선택**: 관심 영역(ROI)을 명확하게 포함하도록 충분히 큰 경계 상자를 그리되, 너무 크면 정확도가 떨어질 수 있습니다.
-2. **슬라이스 선택**: 관심 영역이 가장 명확하게 보이는 중간 슬라이스를 선택하세요.
-3. **GPU 메모리**: 메모리 부족 오류가 발생하면 `GPU_MEMORY_LIMIT`를 0.6 이하로 줄이세요.
-4. **동시 작업**: 여러 작업을 동시에 실행하면 GPU 메모리가 부족할 수 있으므로 `MAX_CONCURRENT_JOBS=1`로 설정하세요.
-5. **모니터링**: Flower 대시보드(http://127.0.0.1:5556)에서 실시간으로 작업 상태를 확인할 수 있습니다.
-
-### 일반적인 워크플로우
-
-```
-1. NIfTI 파일 업로드
-   ↓
-2. 슬라이스 탐색 (슬라이더 사용)
-   ↓
-3. 관심 영역에 경계 상자 지정 (x1, y1, x2, y2)
-   ↓
-4. 2D 분할 실행 및 확인
-   ↓
-5. 3D Propagation 실행
-   ↓
-6. 결과 다운로드 및 검토
-```
-
----
-
-## 📞 지원 및 기여
-
-- **Issues**: GitHub Issues를 통해 버그 리포트 및 기능 제안
-- **Pull Requests**: 기여를 환영합니다
-- **공식 MedSAM2**: [GitHub Repository](https://github.com/bowang-lab/MedSAM2)
-
----
-
-## 📚 참고 자료
-
-- [MedSAM2 논문](https://github.com/bowang-lab/MedSAM2) - 공식 GitHub 저장소
-- [FastAPI 문서](https://fastapi.tiangolo.com/) - FastAPI 공식 문서
-- [Celery 문서](https://docs.celeryq.dev/) - Celery 공식 문서
-- [Gradio 문서](https://www.gradio.app/docs/) - Gradio 공식 문서
-
----
