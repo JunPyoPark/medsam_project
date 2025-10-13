@@ -4,7 +4,9 @@ set -euo pipefail
 # 🛑 MedSAM2 HITL 서비스 중지 스크립트
 # 현재 구조: Docker(Backend) + Local(Frontend)
 
-PROJECT_ROOT="/home/junpyo/projects/medsam_project"
+# 스크립트 위치 기준으로 프로젝트 루트 자동 탐지
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 PID_DIR="$PROJECT_ROOT/.pids"
 
 # 색상 정의
@@ -22,8 +24,8 @@ cd "$PROJECT_ROOT"
 stop_backend() {
     echo -e "${YELLOW}📋 Docker 백엔드 서비스 중지 중...${NC}"
     
-    if docker-compose ps | grep -q "Up"; then
-        docker-compose down
+    if docker compose ps | grep -q "Up"; then
+        docker compose down
         echo -e "${GREEN}✅ Docker 백엔드 서비스 중지됨${NC}"
     else
         echo -e "${YELLOW}⚠️  Docker 서비스가 실행 중이 아닙니다${NC}"

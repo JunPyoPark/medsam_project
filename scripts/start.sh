@@ -4,7 +4,9 @@ set -euo pipefail
 # 🚀 MedSAM2 HITL 서비스 시작 스크립트
 # 현재 구조: Docker(Backend) + Local(Frontend)
 
-PROJECT_ROOT="/home/junpyo/projects/medsam_project"
+# 스크립트 위치 기준으로 프로젝트 루트 자동 탐지
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 VENV_PATH="$PROJECT_ROOT/.venv/bin/activate"
 PID_DIR="$PROJECT_ROOT/.pids"
 LOG_GRADIO="/tmp/gradio.log"
@@ -31,24 +33,24 @@ fi
 start_backend() {
     echo -e "${YELLOW}📋 Docker 백엔드 서비스 시작 중...${NC}"
     
-    if docker-compose ps | grep -q "Up"; then
+    if docker compose ps | grep -q "Up"; then
         echo -e "${GREEN}✅ Docker 서비스가 이미 실행 중입니다${NC}"
-        docker-compose ps
+        docker compose ps
     else
         echo -e "${BLUE}🐳 Docker Compose 시작 중...${NC}"
-        docker-compose up -d
+        docker compose up -d
         
         # 서비스 시작 대기
         echo -e "${YELLOW}⏳ 서비스 초기화 대기 중...${NC}"
         sleep 10
         
         # 상태 확인
-        if docker-compose ps | grep -q "Up"; then
+        if docker compose ps | grep -q "Up"; then
             echo -e "${GREEN}✅ Docker 백엔드 서비스 시작 완료${NC}"
-            docker-compose ps
+            docker compose ps
         else
             echo -e "${RED}❌ Docker 서비스 시작 실패${NC}"
-            docker-compose logs --tail=20
+            docker compose logs --tail=20
             return 1
         fi
     fi
@@ -118,7 +120,7 @@ echo "  - API 문서: http://127.0.0.1:8000/docs"
 echo ""
 echo -e "${BLUE}📊 서비스 상태 확인:${NC}"
 echo "  - 전체 상태: ./scripts/status.sh"
-echo "  - Docker 로그: docker-compose logs -f"
+echo "  - Docker 로그: docker compose logs -f"
 echo "  - Gradio 로그: tail -f $LOG_GRADIO"
 echo ""
 echo -e "${BLUE}💡 사용법:${NC}"

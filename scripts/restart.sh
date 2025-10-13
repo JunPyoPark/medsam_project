@@ -4,7 +4,9 @@ set -euo pipefail
 # 🔄 MedSAM2 HITL 서비스 재시작 스크립트
 # 현재 구조: Docker(Backend) + Local(Frontend)
 
-PROJECT_ROOT="/home/junpyo/projects/medsam_project"
+# 스크립트 위치 기준으로 프로젝트 루트 자동 탐지
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 # 색상 정의
 RED='\033[0;31m'

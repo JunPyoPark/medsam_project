@@ -155,7 +155,7 @@ git clone https://github.com/bowang-lab/MedSAM2.git
 mkdir -p data temp models
 
 # 5. Docker Compose 빌드 및 실행
-docker-compose up --build -d
+docker compose up --build -d
 
 # 6. Gradio 실행 (별도 터미널)
 python3.10 -m venv .venv
@@ -190,7 +190,7 @@ cd MedSAM2 && pip install -e . && cd ..
 
 ### 2. 서비스 시작 (이미 설치된 경우)
 ```bash
-cd /home/junpyo/projects/medsam_project
+cd /path/to/medsam_project
 
 # 가상환경 활성화 (필요시)
 source .venv/bin/activate
@@ -258,10 +258,10 @@ source .venv/bin/activate
 - [ ] 모델 다운로드 (선택): `chmod +x scripts/download_models.sh && ./scripts/download_models.sh`
 
 #### Docker 빌드 및 실행
-- [ ] 빌드 시작: `docker-compose up --build -d` (10-20분 소요)
-- [ ] 별도 터미널에서 빌드 로그 확인: `docker-compose logs -f api`
+- [ ] 빌드 시작: `docker compose up --build -d` (10-20분 소요)
+- [ ] 별도 터미널에서 빌드 로그 확인: `docker compose logs -f api`
 - [ ] 빌드 완료 대기 (에러 없이 완료되어야 함)
-- [ ] 컨테이너 상태 확인: `docker-compose ps` (모두 "Up" 상태)
+- [ ] 컨테이너 상태 확인: `docker compose ps` (모두 "Up" 상태)
 
 #### Gradio 프론트엔드 실행
 - [ ] 새 터미널 열기
@@ -272,9 +272,9 @@ source .venv/bin/activate
 
 #### 설치 확인
 - [ ] API 서버: `curl http://localhost:8000/health`
-- [ ] Redis: `docker-compose exec api redis-cli -h redis ping`
-- [ ] GPU (GPU 사용 시): `docker-compose exec worker nvidia-smi`
-- [ ] MedSAM2 모듈: `docker-compose exec worker python -c "import sam2"`
+- [ ] Redis: `docker compose exec api redis-cli -h redis ping`
+- [ ] GPU (GPU 사용 시): `docker compose exec worker nvidia-smi`
+- [ ] MedSAM2 모듈: `docker compose exec worker python -c "import sam2"`
 - [ ] Gradio UI: 브라우저에서 `http://서버IP:7860` 접속
 - [ ] Flower: 브라우저에서 `http://서버IP:5556` 접속
 
@@ -415,16 +415,25 @@ chmod 755 data temp models
 
 #### 4. MedSAM2 모델 다운로드
 
-**자동 다운로드 (권장)**
+**방법 1: 자동 다운로드 스크립트 (권장)**
 ```bash
+# 프로젝트 루트에서 실행
 chmod +x scripts/download_models.sh
 ./scripts/download_models.sh
 ```
 
-**수동 다운로드**
-[MedSAM2 공식 저장소](https://github.com/bowang-lab/MedSAM2)를 참고하여 다음 파일들을 다운로드하세요:
-- `MedSAM2_latest.pt` - MedSAM2 체크포인트
-- `sam2.1_hiera_t512.yaml` - SAM2 설정 파일
+**방법 2: 수동 다운로드**
+```bash
+cd models
+wget https://huggingface.co/wanglab/MedSAM2/resolve/main/MedSAM2_latest.pt -O MedSAM2_latest.pt
+
+# 다운로드 확인 (약 149MB여야 함)
+ls -lh MedSAM2_latest.pt
+```
+
+**필요한 파일:**
+- `MedSAM2_latest.pt` - MedSAM2 체크포인트 (149MB) ← 다운로드 필요
+- `sam2.1_hiera_t512.yaml` - SAM2 설정 파일 (이미 포함됨) ✅
 
 ```plaintext
 medsam_project/
@@ -437,30 +446,30 @@ medsam_project/
 ```bash
 # Docker 이미지를 빌드하고 백엔드 서비스 실행
 # 주의: 빌드에 시간이 오래 걸릴 수 있습니다 (10-20분)
-docker-compose up --build -d
+docker compose up --build -d
 
 # 빌드 진행 상황 확인 (별도 터미널)
-docker-compose logs -f api
+docker compose logs -f api
 
 # 빌드 완료 후 서비스 상태 확인
-docker-compose ps
+docker compose ps
 # 모든 서비스가 "Up" 상태여야 함
 
 # 전체 로그 확인
-docker-compose logs -f
+docker compose logs -f
 ```
 
 **Docker Compose 서비스 구성:**
 - **redis**: Redis 메시지 브로커 (포트 6380:6379, 호스트:컨테이너)
 - **api**: FastAPI 서버 (포트 8000:8000, GPU 지원)
-- **worker**: Celery Worker (GPU 처리, concurrency=1)
+- **worker**: Celery Worker (GPU 처리, concurrency=2, 동시 2개 작업 처리)
 - **monitor**: Flower 모니터링 대시보드 (포트 5556:5555)
 
 > **중요 - 프로덕션 모드 vs 개발 모드**:
 > 
 > **현재 설정: 프로덕션 모드 (권장)**
 > - MedSAM2와 코드가 Docker 이미지에 포함됨
-> - 코드 수정 시 이미지 재빌드 필요: `docker-compose up --build -d`
+> - 코드 수정 시 이미지 재빌드 필요: `docker compose up --build -d`
 > - 안정적이고 배포에 적합
 > 
 > **개발 모드로 전환하려면**:
@@ -508,6 +517,90 @@ sudo ufw allow from 192.168.1.0/24 to any port 7860
 **완료!** 
 - 로컬: http://127.0.0.1:7860
 - 원격: http://서버IP:7860
+
+---
+
+### 🎛️ GPU 및 Worker 설정 (선택적 최적화)
+
+#### GPU 선택 설정
+
+특정 GPU만 사용하도록 제한할 수 있습니다. `docker-compose.yml` 파일을 수정하세요:
+
+**예시: GPU 6번, 7번만 사용**
+```yaml
+api:
+  environment:
+    # ... 기존 설정 ...
+  deploy:
+    resources:
+      reservations:
+        devices:
+          - driver: nvidia
+            device_ids: ['6']  # API 서버는 GPU 6번 사용
+            capabilities: [gpu]
+
+worker:
+  environment:
+    # ... 기존 설정 ...
+  deploy:
+    resources:
+      reservations:
+        devices:
+          - driver: nvidia
+            device_ids: ['7']  # Worker는 GPU 7번 사용
+            capabilities: [gpu]
+```
+
+**모든 GPU 사용 (기본값)**
+```yaml
+deploy:
+  resources:
+    reservations:
+      devices:
+        - driver: nvidia
+          count: 1  # 사용 가능한 GPU 중 1개 자동 할당
+          capabilities: [gpu]
+```
+
+**GPU 할당 확인**
+```bash
+# API 컨테이너 GPU 확인
+docker compose exec api nvidia-smi --query-gpu=index,name,pci.bus_id --format=csv
+
+# Worker 컨테이너 GPU 확인
+docker compose exec worker nvidia-smi --query-gpu=index,name,pci.bus_id --format=csv
+```
+
+#### Worker 성능 튜닝
+
+동시 처리 작업 수를 조정하여 성능을 최적화할 수 있습니다.
+
+**동시 처리 작업 수 설정**
+```yaml
+worker:
+  command: celery -A medsam_api_server.celery_app:celery_app worker --loglevel=info --concurrency=2
+```
+
+**권장 설정:**
+- `concurrency=1`: 순차 처리 (안정적, GPU 메모리 절약)
+- `concurrency=2`: 2개 동시 처리 (권장, 대부분의 경우 충분)
+- `concurrency=4-5`: 많은 동시 사용자 (GPU 메모리 충분한 경우)
+
+**GPU 메모리 사용량 참고:**
+- 2D 분할 1개: ~800 MB
+- 3D 전파 1개: ~1,800 MB
+- Concurrency=2 (3D 전파 2개 동시): ~2,700 MB
+
+**적용 방법:**
+```bash
+# docker-compose.yml 수정 후
+docker compose down
+docker compose up -d
+
+# 설정 확인
+docker compose logs worker | grep concurrency
+# 예상 출력: .> concurrency: 2 (prefork)
+```
 
 ---
 
@@ -611,10 +704,19 @@ cd ..
 python -c "import sam2; print('✅ MedSAM2 설치 완료')"
 ```
 
-#### 6. 모델 다운로드
+#### 6. 모델 다운로드 (로컬 방식)
 ```bash
+# 방법 1: 자동 스크립트 (권장)
 chmod +x scripts/download_models.sh
 ./scripts/download_models.sh
+
+# 방법 2: 수동 다운로드
+cd models
+wget https://huggingface.co/wanglab/MedSAM2/resolve/main/MedSAM2_latest.pt -O MedSAM2_latest.pt
+cd ..
+
+# 다운로드 확인
+ls -lh models/MedSAM2_latest.pt  # 약 149MB
 ```
 
 #### 7. 스크립트 실행 권한 설정
@@ -665,7 +767,7 @@ sudo ufw allow from 192.168.1.0/24 to any port 7860
 
 #### 1단계: 컨테이너 상태 확인
 ```bash
-docker-compose ps
+docker compose ps
 
 # 예상 출력:
 # NAME              IMAGE              STATUS         PORTS
@@ -676,8 +778,8 @@ docker-compose ps
 ```
 
 **문제 발생 시:**
-- `Restarting` 상태: 로그 확인 `docker-compose logs api`
-- `Exit 1`: 빌드 오류, `docker-compose up --build -d` 재실행
+- `Restarting` 상태: 로그 확인 `docker compose logs api`
+- `Exit 1`: 빌드 오류, `docker compose up --build -d` 재실행
 - `Unhealthy`: 헬스체크 실패, 서비스 시작 대기 (1-2분)
 
 #### 2단계: API 서버 확인
@@ -694,13 +796,13 @@ curl http://localhost:8000/health
 
 #### 3단계: Redis 연결 확인
 ```bash
-docker-compose exec api redis-cli -h redis ping
+docker compose exec api redis-cli -h redis ping
 # 예상 출력: PONG
 ```
 
 #### 4단계: GPU 확인 (GPU 사용 시)
 ```bash
-docker-compose exec worker nvidia-smi
+docker compose exec worker nvidia-smi
 
 # GPU 정보가 표시되어야 함
 # 에러 발생 시: GPU 설정 문제
@@ -708,7 +810,7 @@ docker-compose exec worker nvidia-smi
 
 #### 5단계: MedSAM2 모듈 확인
 ```bash
-docker-compose exec worker python -c "import sam2; print('✅ MedSAM2 loaded')"
+docker compose exec worker python -c "import sam2; print('✅ MedSAM2 loaded')"
 
 # 예상 출력: ✅ MedSAM2 loaded
 # ImportError 발생 시: 빌드 문제
@@ -924,21 +1026,21 @@ def run_3d_propagation():           # 3D 전파 작업
 
 ```bash
 # 모든 서비스 시작
-docker-compose up -d
+docker compose up -d
 
 # 모든 서비스 중지
-docker-compose down
+docker compose down
 
 # 서비스 상태 확인
-docker-compose ps
+docker compose ps
 
 # 실시간 로그 확인
-docker-compose logs -f
+docker compose logs -f
 
 # 특정 서비스 로그 확인
-docker-compose logs -f api
-docker-compose logs -f worker
-docker-compose logs -f redis
+docker compose logs -f api
+docker compose logs -f worker
+docker compose logs -f redis
 ```
 
 ### 코드 수정 후 재시작

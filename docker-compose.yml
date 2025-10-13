@@ -37,13 +37,12 @@ services:
       - TEMP_ROOT=/app/temp
       - GPU_MEMORY_LIMIT=0.8  # GPU 메모리 사용량 제한 (80%)
       - MAX_CONCURRENT_JOBS=2  # 동시 처리 작업 수 제한
-      - NVIDIA_VISIBLE_DEVICES=all
     deploy:
       resources:
         reservations:
           devices:
             - driver: nvidia
-              count: 1
+              device_ids: ['6']
               capabilities: [gpu]
     depends_on:
       redis:
@@ -77,18 +76,17 @@ services:
       - TEMP_ROOT=/app/temp
       - GPU_MEMORY_LIMIT=0.8
       - C_FORCE_ROOT=1
-      - NVIDIA_VISIBLE_DEVICES=all
     deploy:
       resources:
         reservations:
           devices:
             - driver: nvidia
-              count: 1
+              device_ids: ['7']
               capabilities: [gpu]
     depends_on:
       redis:
         condition: service_healthy
-    command: celery -A medsam_api_server.celery_app:celery_app worker --loglevel=info --concurrency=1
+    command: celery -A medsam_api_server.celery_app:celery_app worker --loglevel=info --concurrency=2
     restart: unless-stopped
 
   monitor:

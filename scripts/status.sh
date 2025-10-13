@@ -4,7 +4,9 @@ set -euo pipefail
 # 📊 MedSAM2 HITL 서비스 상태 확인 스크립트
 # 현재 구조: Docker(Backend) + Local(Frontend)
 
-PROJECT_ROOT="/home/junpyo/projects/medsam_project"
+# 스크립트 위치 기준으로 프로젝트 루트 자동 탐지
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 # 색상 정의
 RED='\033[0;31m'
@@ -22,17 +24,17 @@ cd "$PROJECT_ROOT"
 
 # Docker 백엔드 서비스 상태
 echo -e "${PURPLE}🐳 Docker 백엔드 서비스:${NC}"
-if command -v docker-compose > /dev/null 2>&1; then
-    if docker-compose ps 2>/dev/null | grep -q "Up"; then
+if command -v docker > /dev/null 2>&1; then
+    if docker compose ps 2>/dev/null | grep -q "Up"; then
         echo -e "${GREEN}✅ Docker 서비스 실행 중${NC}"
-        docker-compose ps | grep -E "(NAME|Up|Exited)" | head -10
+        docker compose ps | grep -E "(NAME|Up|Exited)" | head -10
         echo ""
         
         # 개별 서비스 상태
         echo -e "${CYAN}🔴 Redis:${NC}"
-        if docker-compose ps redis 2>/dev/null | grep -q "Up"; then
+        if docker compose ps redis 2>/dev/null | grep -q "Up"; then
             echo -e "  ${GREEN}✅ 실행 중 (Docker)${NC}"
-            if docker-compose exec redis redis-cli ping 2>/dev/null | grep -q "PONG"; then
+            if docker compose exec redis redis-cli ping 2>/dev/null | grep -q "PONG"; then
                 echo -e "  ${GREEN}✅ 연결 가능${NC}"
             else
                 echo -e "  ${YELLOW}⚠️  연결 확인 실패${NC}"
@@ -42,7 +44,7 @@ if command -v docker-compose > /dev/null 2>&1; then
         fi
         
         echo -e "${CYAN}🚀 FastAPI:${NC}"
-        if docker-compose ps api 2>/dev/null | grep -q "Up"; then
+        if docker compose ps api 2>/dev/null | grep -q "Up"; then
             echo -e "  ${GREEN}✅ 실행 중 (Docker)${NC}"
             if curl -s http://127.0.0.1:8000/health > /dev/null 2>&1; then
                 echo -e "  ${GREEN}✅ 응답 가능 (http://127.0.0.1:8000)${NC}"
@@ -54,14 +56,14 @@ if command -v docker-compose > /dev/null 2>&1; then
         fi
         
         echo -e "${CYAN}⚙️  Celery Worker:${NC}"
-        if docker-compose ps worker 2>/dev/null | grep -q "Up"; then
+        if docker compose ps worker 2>/dev/null | grep -q "Up"; then
             echo -e "  ${GREEN}✅ 실행 중 (Docker)${NC}"
         else
             echo -e "  ${RED}❌ 중지됨${NC}"
         fi
         
         echo -e "${CYAN}📊 Celery Monitor:${NC}"
-        if docker-compose ps monitor 2>/dev/null | grep -q "Up"; then
+        if docker compose ps monitor 2>/dev/null | grep -q "Up"; then
             echo -e "  ${GREEN}✅ 실행 중 (Docker)${NC}"
             echo -e "  ${BLUE}💡 모니터링: http://127.0.0.1:5556${NC}"
         else
@@ -70,13 +72,13 @@ if command -v docker-compose > /dev/null 2>&1; then
         
     else
         echo -e "${RED}❌ Docker 서비스 중지됨${NC}"
-        if docker-compose ps 2>/dev/null | grep -q "Exit"; then
+        if docker compose ps 2>/dev/null | grep -q "Exit"; then
             echo -e "${YELLOW}⚠️  일부 서비스가 종료 상태입니다:${NC}"
-            docker-compose ps | grep "Exit"
+            docker compose ps | grep "Exit"
         fi
     fi
 else
-    echo -e "${RED}❌ docker-compose 명령을 찾을 수 없습니다${NC}"
+    echo -e "${RED}❌ docker 명령을 찾을 수 없습니다${NC}"
 fi
 
 echo ""
@@ -144,11 +146,11 @@ echo -e "${PURPLE}📝 로그 파일 상태:${NC}"
 
 # Docker 로그 (최근 에러 확인)
 echo -e "  ${CYAN}Docker 로그:${NC}"
-if docker-compose ps 2>/dev/null | grep -q "Up"; then
-    ERROR_COUNT=$(docker-compose logs --tail=100 2>/dev/null | grep -i error | wc -l 2>/dev/null || echo "0")
+if docker compose ps 2>/dev/null | grep -q "Up"; then
+    ERROR_COUNT=$(docker compose logs --tail=100 2>/dev/null | grep -i error | wc -l 2>/dev/null || echo "0")
     if [ "$ERROR_COUNT" -gt 0 ]; then
         echo -e "    ${YELLOW}⚠️  최근 에러 $ERROR_COUNT 개 발견${NC}"
-        echo -e "    ${BLUE}💡 확인: docker-compose logs --tail=50${NC}"
+        echo -e "    ${BLUE}💡 확인: docker compose logs --tail=50${NC}"
     else
         echo -e "    ${GREEN}✅ 최근 에러 없음${NC}"
     fi
@@ -187,7 +189,7 @@ echo "    - 백엔드만: ./scripts/start.sh backend"
 echo "    - 프론트엔드만: ./scripts/start.sh gradio"
 echo ""
 echo -e "  ${BLUE}로그 확인:${NC}"
-echo "    - Docker 로그: docker-compose logs -f"
+echo "    - Docker 로그: docker compose logs -f"
 echo "    - Gradio 로그: tail -f $GRADIO_LOG"
 echo ""
 echo -e "  ${BLUE}접속 URL:${NC}"
