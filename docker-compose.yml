@@ -36,14 +36,7 @@ services:
       - MODEL_ROOT=/app/models
       - TEMP_ROOT=/app/temp
       - GPU_MEMORY_LIMIT=0.8  # GPU 메모리 사용량 제한 (80%)
-      - MAX_CONCURRENT_JOBS=2  # 동시 처리 작업 수 제한
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              device_ids: ['6']
-              capabilities: [gpu]
+      - MAX_CONCURRENT_JOBS=4  # 동시 처리 작업 수 제한 (Worker 2개 × concurrency 2)
     depends_on:
       redis:
         condition: service_healthy
@@ -54,11 +47,46 @@ services:
       retries: 3
     restart: unless-stopped
 
-  worker:
+  worker1:
     build:
       context: .
       dockerfile: medsam_api_server/Dockerfile
-    container_name: medsam2_worker
+    container_name: medsam2_worker1
+    volumes:
+      # 개발 모드: 로컬 코드 수정 시 즉시 반영
+      # - ./MedSAM2:/app/MedSAM2
+      # - ./medsam_api_server:/app/medsam_api_server
+      
+      # 프로덕션 모드: 데이터와 모델만 마운트
+      - ./data:/app/data
+      - ./models:/app/models
+      - ./temp:/app/temp
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/1
+      - DATA_ROOT=/app/data
+      - MODEL_ROOT=/app/models
+      - TEMP_ROOT=/app/temp
+      - GPU_MEMORY_LIMIT=0.8
+      - C_FORCE_ROOT=1
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ['6']
+              capabilities: [gpu]
+    depends_on:
+      redis:
+        condition: service_healthy
+    command: celery -A medsam_api_server.celery_app:celery_app worker --loglevel=info --concurrency=2
+    restart: unless-stopped
+
+  worker2:
+    build:
+      context: .
+      dockerfile: medsam_api_server/Dockerfile
+    container_name: medsam2_worker2
     volumes:
       # 개발 모드: 로컬 코드 수정 시 즉시 반영
       # - ./MedSAM2:/app/MedSAM2
