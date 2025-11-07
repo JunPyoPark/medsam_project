@@ -59,6 +59,20 @@ start_backend() {
 start_gradio() {
     echo -e "${YELLOW}🎨 Gradio 프론트엔드 시작 중...${NC}"
     
+    # API_BASE 자동 설정 (외부 접속 지원)
+    if [ -z "${API_BASE:-}" ]; then
+        DEFAULT_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
+        if [ -n "$DEFAULT_IP" ]; then
+            export API_BASE="http://$DEFAULT_IP:8000"
+            echo -e "${BLUE}ℹ️  API_BASE가 설정되지 않아 자동으로 ${API_BASE} 로 설정했습니다.${NC}"
+        else
+            export API_BASE="http://127.0.0.1:8000"
+            echo -e "${YELLOW}⚠️  hostname -I 결과가 없어 API_BASE를 ${API_BASE} 로 설정했습니다.${NC}"
+        fi
+    else
+        echo -e "${BLUE}ℹ️  API_BASE=${API_BASE}${NC}"
+    fi
+
     # 기존 Gradio 프로세스 확인
     if [ -f "$PID_DIR/gradio.pid" ] && kill -0 "$(cat $PID_DIR/gradio.pid)" 2>/dev/null; then
         echo -e "${GREEN}✅ Gradio가 이미 실행 중입니다 (PID: $(cat $PID_DIR/gradio.pid))${NC}"

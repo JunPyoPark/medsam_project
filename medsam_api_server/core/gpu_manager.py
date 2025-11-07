@@ -127,8 +127,20 @@ class GPUResourceManager:
             )
             
         except Exception as e:
-            logger.error(f"Failed to get GPU status: {e}")
-            return None
+            logger.warning(
+                "Failed to get GPU status via NVML (%s). Falling back to simplified status.",
+                e,
+            )
+            fallback_total = 8192.0  # MB, reasonable default for MIG slice
+            return GPUStatus(
+                gpu_id=gpu_id,
+                memory_used=0.0,
+                memory_total=fallback_total,
+                memory_percent=0.0,
+                temperature=0.0,
+                utilization=0.0,
+                is_available=len(self._active_jobs) < self.max_concurrent_jobs,
+            )
     
     def can_accept_job(self, task_type: str, estimated_memory: float = 2000) -> bool:
         """새 작업을 수용할 수 있는지 확인"""

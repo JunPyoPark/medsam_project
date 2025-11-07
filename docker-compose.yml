@@ -37,6 +37,8 @@ services:
       - TEMP_ROOT=/app/temp
       - GPU_MEMORY_LIMIT=0.8  # GPU 메모리 사용량 제한 (80%)
       - MAX_CONCURRENT_JOBS=4  # 동시 처리 작업 수 제한 (Worker 2개 × concurrency 2)
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
     depends_on:
       redis:
         condition: service_healthy
@@ -69,12 +71,14 @@ services:
       - TEMP_ROOT=/app/temp
       - GPU_MEMORY_LIMIT=0.8
       - C_FORCE_ROOT=1
+      - NVIDIA_VISIBLE_DEVICES=MIG-d9333a0e-f11b-525b-9525-2cf04518b57a
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
     deploy:
       resources:
         reservations:
           devices:
             - driver: nvidia
-              device_ids: ['6']
+              device_ids: ['MIG-d9333a0e-f11b-525b-9525-2cf04518b57a']
               capabilities: [gpu]
     depends_on:
       redis:
@@ -104,12 +108,14 @@ services:
       - TEMP_ROOT=/app/temp
       - GPU_MEMORY_LIMIT=0.8
       - C_FORCE_ROOT=1
+      - NVIDIA_VISIBLE_DEVICES=MIG-bd39ce5b-d147-57d6-8588-2c1667dfd164
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
     deploy:
       resources:
         reservations:
           devices:
             - driver: nvidia
-              device_ids: ['7']
+              device_ids: ['MIG-bd39ce5b-d147-57d6-8588-2c1667dfd164']
               capabilities: [gpu]
     depends_on:
       redis:
@@ -129,6 +135,8 @@ services:
     environment:
       - CELERY_BROKER_URL=redis://redis:6379/0
       - CELERY_RESULT_BACKEND=redis://redis:6379/1
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
     depends_on:
       redis:
         condition: service_healthy
