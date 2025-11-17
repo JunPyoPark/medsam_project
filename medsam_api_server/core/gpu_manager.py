@@ -252,13 +252,17 @@ class GPUResourceManager:
 
 # 전역 GPU 관리자 인스턴스
 _gpu_manager: Optional[GPUResourceManager] = None
+_gpu_manager_lock = Lock()
 
 
 def get_gpu_manager() -> GPUResourceManager:
-    """GPU 관리자 싱글톤 인스턴스 반환"""
+    """GPU 관리자 싱글톤 인스턴스 반환 (스레드 안전)"""
     global _gpu_manager
     if _gpu_manager is None:
-        gpu_memory_limit = float(os.getenv("GPU_MEMORY_LIMIT", "0.8"))
-        max_concurrent_jobs = int(os.getenv("MAX_CONCURRENT_JOBS", "2"))
-        _gpu_manager = GPUResourceManager(gpu_memory_limit, max_concurrent_jobs)
+        with _gpu_manager_lock:
+            # Double-check locking pattern
+            if _gpu_manager is None:
+                gpu_memory_limit = float(os.getenv("GPU_MEMORY_LIMIT", "0.8"))
+                max_concurrent_jobs = int(os.getenv("MAX_CONCURRENT_JOBS", "2"))
+                _gpu_manager = GPUResourceManager(gpu_memory_limit, max_concurrent_jobs)
     return _gpu_manager 

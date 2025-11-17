@@ -123,7 +123,7 @@ MedSAM2는 2D 및 3D 의료 영상을 분할하기 위한 최첨단 파운데이
 ### 📋 사전 요구사항
 
 **필수:**
-- Python 3.10+
+- Python 3.10+ (권장: Python 3.12)
 - Redis 서버
 - 가상환경 (권장)
 
@@ -158,7 +158,7 @@ mkdir -p data temp models
 docker compose up --build -d
 
 # 6. Gradio 실행 (별도 터미널)
-python3.10 -m venv .venv
+python3.12 -m venv .venv
 source .venv/bin/activate
 pip install -r medsam_gradio_viewer/requirements.txt
 python medsam_gradio_viewer/app.py
@@ -176,7 +176,7 @@ cd medsam_project
 git clone https://github.com/bowang-lab/MedSAM2.git
 
 # 3. 가상환경 및 설치
-python3.10 -m venv .venv
+python3.12 -m venv .venv
 source .venv/bin/activate
 mkdir -p data temp models
 pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
@@ -198,6 +198,29 @@ source .venv/bin/activate
 # 모든 서비스 시작 (Redis, FastAPI, Celery, Gradio)
 ./scripts/start.sh
 ```
+
+### ✅ 새 서버 빠른 실행 스크립트 활용
+
+> Docker 환경에서 Gradio까지 한 번에 기동하고 싶을 때 사용하세요.
+
+```bash
+cd /path/to/medsam_project
+
+# (최초 1회) 시스템 의존성 점검
+./scripts/check_prerequisites.sh
+
+# (최초 1회) Gradio용 가상환경 생성
+# python3.12이 없다면 apt로 python3.12-venv 설치 후 실행
+python3.12 -m venv .venv
+source .venv/bin/activate
+pip install --upgrade pip
+pip install -r medsam_gradio_viewer/requirements.txt
+
+# (매 실행 시) 빠른 시작
+./scripts/quick_start.sh
+```
+
+> `python3.12 -m venv` 실행 시 `ensurepip` 오류가 발생하면 `sudo apt install python3.12-venv` 를 설치한 뒤 다시 시도하세요.
 
 ### 3. 웹 접속
 - **Gradio UI** (사용자 인터페이스): http://127.0.0.1:7860
@@ -265,7 +288,7 @@ source .venv/bin/activate
 
 #### Gradio 프론트엔드 실행
 - [ ] 새 터미널 열기
-- [ ] 가상환경 생성: `python3.10 -m venv .venv`
+- [ ] 가상환경 생성: `python3.12 -m venv .venv`
 - [ ] 가상환경 활성화: `source .venv/bin/activate`
 - [ ] 의존성 설치: `pip install -r medsam_gradio_viewer/requirements.txt`
 - [ ] Gradio 실행: `python medsam_gradio_viewer/app.py`
@@ -290,7 +313,7 @@ source .venv/bin/activate
 설치 전에 다음 항목들을 확인하세요:
 
 - [ ] OS: Ubuntu 20.04/22.04 또는 Debian 기반 시스템
-- [ ] Python 3.10+ 설치 가능 여부
+- [ ] Python 3.12 설치 가능 여부 (또는 3.10 이상)
 - [ ] 인터넷 연결 (패키지 다운로드용)
 - [ ] sudo 권한 보유
 - [ ] 디스크 공간: 최소 20GB 이상 권장
@@ -315,8 +338,8 @@ sudo apt-get install -y \
     curl \
     wget \
     build-essential \
-    python3.10 \
-    python3.10-venv \
+    python3.12 \
+    python3.12-venv \
     python3-pip
 ```
 
@@ -491,7 +514,7 @@ docker compose logs -f
 새 터미널에서:
 ```bash
 # 가상환경 생성 및 활성화
-python3.10 -m venv .venv
+python3.12 -m venv .venv
 source .venv/bin/activate
 
 # 의존성 설치
@@ -622,9 +645,9 @@ sudo apt-get install -y \
     curl \
     wget \
     build-essential \
-    python3.10 \
-    python3.10-venv \
-    python3.10-dev \
+    python3.12 \
+    python3.12-venv \
+    python3.12-dev \
     python3-pip \
     redis-server
 
@@ -665,7 +688,7 @@ git clone https://github.com/bowang-lab/MedSAM2.git
 #### 2. 가상환경 설정 및 활성화
 ```bash
 # medsam_project 폴더 안에서 실행
-python3.10 -m venv .venv
+python3.12 -m venv .venv
 source .venv/bin/activate
 
 # pip 업그레이드

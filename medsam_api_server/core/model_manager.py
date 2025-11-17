@@ -286,11 +286,15 @@ class MedicalImageProcessor:
 
 # 전역 모델 매니저 인스턴스
 _model_manager: Optional[MedSAM2ModelManager] = None
+_model_manager_lock = threading.Lock()
 
 
 def get_model_manager() -> MedSAM2ModelManager:
-    """모델 매니저 싱글톤 인스턴스 반환"""
+    """모델 매니저 싱글톤 인스턴스 반환 (스레드 안전)"""
     global _model_manager
     if _model_manager is None:
-        _model_manager = MedSAM2ModelManager()
+        with _model_manager_lock:
+            # Double-check locking pattern
+            if _model_manager is None:
+                _model_manager = MedSAM2ModelManager()
     return _model_manager 

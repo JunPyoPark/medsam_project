@@ -8,6 +8,7 @@ import os
 import gc
 import base64
 import logging
+import threading
 import numpy as np
 from io import BytesIO
 from typing import Tuple, Optional, Dict, Any, List
@@ -473,11 +474,15 @@ class MedSAM2InferenceEngine:
 
 # 전역 추론 엔진 인스턴스
 _inference_engine: Optional[MedSAM2InferenceEngine] = None
+_inference_engine_lock = threading.Lock()
 
 
 def get_inference_engine() -> MedSAM2InferenceEngine:
-    """추론 엔진 싱글톤 인스턴스 반환"""
+    """추론 엔진 싱글톤 인스턴스 반환 (스레드 안전)"""
     global _inference_engine
     if _inference_engine is None:
-        _inference_engine = MedSAM2InferenceEngine()
+        with _inference_engine_lock:
+            # Double-check locking pattern
+            if _inference_engine is None:
+                _inference_engine = MedSAM2InferenceEngine()
     return _inference_engine 
