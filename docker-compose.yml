@@ -54,12 +54,173 @@ services:
       context: .
       dockerfile: medsam_api_server/Dockerfile
     container_name: medsam2_worker1
+    shm_size: '16gb'
     volumes:
-      # 개발 모드: 로컬 코드 수정 시 즉시 반영
-      # - ./MedSAM2:/app/MedSAM2
-      # - ./medsam_api_server:/app/medsam_api_server
-      
-      # 프로덕션 모드: 데이터와 모델만 마운트
+      - ./data:/app/data
+      - ./models:/app/models
+      - ./temp:/app/temp
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/1
+      - DATA_ROOT=/app/data
+      - MODEL_ROOT=/app/models
+      - TEMP_ROOT=/app/temp
+      - GPU_MEMORY_LIMIT=0.8
+      - C_FORCE_ROOT=1
+      - NVIDIA_VISIBLE_DEVICES=MIG-62fd5b68-539d-59d0-b2c7-6c4c145d69f6
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ['MIG-62fd5b68-539d-59d0-b2c7-6c4c145d69f6']
+              capabilities: [gpu]
+    depends_on:
+      redis:
+        condition: service_healthy
+    command: celery -A medsam_api_server.celery_app:celery_app worker --loglevel=info --pool=threads --concurrency=1
+    restart: unless-stopped
+
+  worker2:
+    build:
+      context: .
+      dockerfile: medsam_api_server/Dockerfile
+    container_name: medsam2_worker2
+    shm_size: '16gb'
+    volumes:
+      - ./data:/app/data
+      - ./models:/app/models
+      - ./temp:/app/temp
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/1
+      - DATA_ROOT=/app/data
+      - MODEL_ROOT=/app/models
+      - TEMP_ROOT=/app/temp
+      - GPU_MEMORY_LIMIT=0.8
+      - C_FORCE_ROOT=1
+      - NVIDIA_VISIBLE_DEVICES=MIG-438443ae-094a-55b6-ba49-a054af95b96a
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ['MIG-438443ae-094a-55b6-ba49-a054af95b96a']
+              capabilities: [gpu]
+    depends_on:
+      redis:
+        condition: service_healthy
+    command: celery -A medsam_api_server.celery_app:celery_app worker --loglevel=info --pool=threads --concurrency=1
+    restart: unless-stopped
+
+  worker3:
+    build:
+      context: .
+      dockerfile: medsam_api_server/Dockerfile
+    container_name: medsam2_worker3
+    shm_size: '16gb'
+    volumes:
+      - ./data:/app/data
+      - ./models:/app/models
+      - ./temp:/app/temp
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/1
+      - DATA_ROOT=/app/data
+      - MODEL_ROOT=/app/models
+      - TEMP_ROOT=/app/temp
+      - GPU_MEMORY_LIMIT=0.8
+      - C_FORCE_ROOT=1
+      - NVIDIA_VISIBLE_DEVICES=MIG-de573676-a18e-5e10-820c-709d601a2ec6
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ['MIG-de573676-a18e-5e10-820c-709d601a2ec6']
+              capabilities: [gpu]
+    depends_on:
+      redis:
+        condition: service_healthy
+    command: celery -A medsam_api_server.celery_app:celery_app worker --loglevel=info --pool=threads --concurrency=1
+    restart: unless-stopped
+
+  worker4:
+    build:
+      context: .
+      dockerfile: medsam_api_server/Dockerfile
+    container_name: medsam2_worker4
+    shm_size: '16gb'
+    volumes:
+      - ./data:/app/data
+      - ./models:/app/models
+      - ./temp:/app/temp
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/1
+      - DATA_ROOT=/app/data
+      - MODEL_ROOT=/app/models
+      - TEMP_ROOT=/app/temp
+      - GPU_MEMORY_LIMIT=0.8
+      - C_FORCE_ROOT=1
+      - NVIDIA_VISIBLE_DEVICES=MIG-cf5aa4b5-fe41-597a-99c6-e1982895c495
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ['MIG-cf5aa4b5-fe41-597a-99c6-e1982895c495']
+              capabilities: [gpu]
+    depends_on:
+      redis:
+        condition: service_healthy
+    command: celery -A medsam_api_server.celery_app:celery_app worker --loglevel=info --pool=threads --concurrency=1
+    restart: unless-stopped
+
+  worker5:
+    build:
+      context: .
+      dockerfile: medsam_api_server/Dockerfile
+    container_name: medsam2_worker5
+    shm_size: '16gb'
+    volumes:
+      - ./data:/app/data
+      - ./models:/app/models
+      - ./temp:/app/temp
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/1
+      - DATA_ROOT=/app/data
+      - MODEL_ROOT=/app/models
+      - TEMP_ROOT=/app/temp
+      - GPU_MEMORY_LIMIT=0.8
+      - C_FORCE_ROOT=1
+      - NVIDIA_VISIBLE_DEVICES=MIG-d683a5aa-09de-5e03-bba3-ba3f606405b3
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ['MIG-d683a5aa-09de-5e03-bba3-ba3f606405b3']
+              capabilities: [gpu]
+    depends_on:
+      redis:
+        condition: service_healthy
+    command: celery -A medsam_api_server.celery_app:celery_app worker --loglevel=info --pool=threads --concurrency=1
+    restart: unless-stopped
+
+  worker6:
+    build:
+      context: .
+      dockerfile: medsam_api_server/Dockerfile
+    container_name: medsam2_worker6
+    shm_size: '16gb'
+    volumes:
       - ./data:/app/data
       - ./models:/app/models
       - ./temp:/app/temp
@@ -83,20 +244,16 @@ services:
     depends_on:
       redis:
         condition: service_healthy
-    command: celery -A medsam_api_server.celery_app:celery_app worker --loglevel=info --pool=threads --concurrency=2
+    command: celery -A medsam_api_server.celery_app:celery_app worker --loglevel=info --pool=threads --concurrency=1
     restart: unless-stopped
 
-  worker2:
+  worker7:
     build:
       context: .
       dockerfile: medsam_api_server/Dockerfile
-    container_name: medsam2_worker2
+    container_name: medsam2_worker7
+    shm_size: '16gb'
     volumes:
-      # 개발 모드: 로컬 코드 수정 시 즉시 반영
-      # - ./MedSAM2:/app/MedSAM2
-      # - ./medsam_api_server:/app/medsam_api_server
-      
-      # 프로덕션 모드: 데이터와 모델만 마운트
       - ./data:/app/data
       - ./models:/app/models
       - ./temp:/app/temp
@@ -120,7 +277,40 @@ services:
     depends_on:
       redis:
         condition: service_healthy
-    command: celery -A medsam_api_server.celery_app:celery_app worker --loglevel=info --pool=threads --concurrency=2
+    command: celery -A medsam_api_server.celery_app:celery_app worker --loglevel=info --pool=threads --concurrency=1
+    restart: unless-stopped
+
+  worker8:
+    build:
+      context: .
+      dockerfile: medsam_api_server/Dockerfile
+    container_name: medsam2_worker8
+    shm_size: '16gb'
+    volumes:
+      - ./data:/app/data
+      - ./models:/app/models
+      - ./temp:/app/temp
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/1
+      - DATA_ROOT=/app/data
+      - MODEL_ROOT=/app/models
+      - TEMP_ROOT=/app/temp
+      - GPU_MEMORY_LIMIT=0.8
+      - C_FORCE_ROOT=1
+      - NVIDIA_VISIBLE_DEVICES=MIG-2b1805a7-9d4b-5fec-ab4f-897036ce6cdc
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ['MIG-2b1805a7-9d4b-5fec-ab4f-897036ce6cdc']
+              capabilities: [gpu]
+    depends_on:
+      redis:
+        condition: service_healthy
+    command: celery -A medsam_api_server.celery_app:celery_app worker --loglevel=info --pool=threads --concurrency=1
     restart: unless-stopped
 
   monitor:
