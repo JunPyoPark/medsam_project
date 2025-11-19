@@ -23,26 +23,70 @@ logger = logging.getLogger(__name__)
 
 def resize_grayscale_to_rgb_and_resize(array, image_size=512):
     """
-    MedSAM2용 이미지 전처리: 3D grayscale을 RGB로 변환 및 리사이즈
+    MedSAM2용 이미지 전처리: 3D grayscale을 RGB로 변환 및 리사이즈 (GPU 가속)
+    Aspect Ratio를 유지하며 Padding을 추가합니다.
     
     Parameters:
         array (np.ndarray): Input array of shape (d, h, w).
         image_size (int): Desired size for the width and height.
     
     Returns:
-        np.ndarray: Resized array of shape (d, 3, image_size, image_size).
+        tuple: (resized_array, padding_info)
+            - resized_array: (d, 3, image_size, image_size)
+            - padding_info: dict with 'scale', 'pad_h', 'pad_w', 'new_h', 'new_w'
     """
+    # GPU 사용 가능 여부 확인
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    
     d, h, w = array.shape
-    resized_array = np.zeros((d, 3, image_size, image_size))
     
-    for i in range(d):
-        img_pil = Image.fromarray(array[i].astype(np.uint8))
-        img_rgb = img_pil.convert("RGB")
-        img_resized = img_rgb.resize((image_size, image_size))
-        img_array = np.array(img_resized).transpose(2, 0, 1)  # (3, image_size, image_size)
-        resized_array[i] = img_array
+    # Scale 계산 (Longest side 기준)
+    scale = image_size / max(h, w)
+    new_h = int(h * scale)
+    new_w = int(w * scale)
     
-    return resized_array
+    # Padding 계산
+    pad_h = image_size - new_h
+    pad_w = image_size - new_w
+    
+    padding_info = {
+        'scale': scale,
+        'pad_h': pad_h,
+        'pad_w': pad_w,
+        'new_h': new_h,
+        'new_w': new_w,
+        'original_h': h,
+        'original_w': w
+    }
+    
+    # numpy array -> torch tensor
+    # (d, h, w) -> (d, 1, h, w) for interpolation
+    tensor = torch.from_numpy(array).float().to(device)
+    tensor = tensor.unsqueeze(1)
+    
+    # 1. Resize (Aspect Ratio 유지)
+    resized_tensor = torch.nn.functional.interpolate(
+        tensor, 
+        size=(new_h, new_w), 
+        mode='bilinear', 
+        align_corners=False
+    )
+    
+    # 2. Pad (Right-Bottom padding)
+    # pad format: (left, right, top, bottom)
+    padded_tensor = torch.nn.functional.pad(
+        resized_tensor,
+        (0, pad_w, 0, pad_h),
+        mode='constant',
+        value=0
+    )
+    
+    # (d, 1, size, size) -> (d, 3, size, size)
+    # Grayscale to RGB: repeat channels
+    rgb_tensor = padded_tensor.repeat(1, 3, 1, 1)
+    
+    # Back to numpy
+    return rgb_tensor.cpu().numpy(), padding_info
 
 
 def get_largest_connected_component(mask):
@@ -175,7 +219,7 @@ class MedSAM2InferenceEngine:
             if model is None:
                 raise RuntimeError("Video model not available for 3D propagation")
             
-            # 3. 참조 마스크 디코딩 및 bbox 추출
+            # 3. 참조 마스크 디코딩
             import base64
             from PIL import Image
             import io
@@ -185,13 +229,6 @@ class MedSAM2InferenceEngine:
             reference_mask = np.array(mask_img) > 0
             logger.info(f"Reference mask shape: {reference_mask.shape}")
             
-            # 참조 마스크에서 bbox 추출
-            bbox = self._extract_bbox_from_mask(reference_mask)
-            if bbox is None:
-                raise ValueError("No valid bounding box found in reference mask")
-            
-            logger.info(f"Extracted bbox: {bbox}")
-            
             # 4. 볼륨 전처리 (MedSAM2 원본 방식)
             # DICOM windowing (1-99 percentile 사용)
             volume_clipped = np.clip(volume, np.percentile(volume, 1), np.percentile(volume, 99))
@@ -200,8 +237,8 @@ class MedSAM2InferenceEngine:
             
             logger.info(f"Volume preprocessing completed. Shape: {volume_uint8.shape}")
             
-            # 5. RGB 변환 및 리사이즈
-            img_resized = resize_grayscale_to_rgb_and_resize(volume_uint8, self.image_size)
+            # 5. RGB 변환 및 리사이즈 (Padding 적용)
+            img_resized, padding_info = resize_grayscale_to_rgb_and_resize(volume_uint8, self.image_size)
             img_resized = img_resized / 255.0
             img_tensor = torch.from_numpy(img_resized).float()
 
@@ -212,38 +249,81 @@ class MedSAM2InferenceEngine:
             img_tensor -= self.img_mean
             img_tensor /= self.img_std
             
-            # 7. 원본 이미지 크기 정보 전달
-            original_h, original_w = volume.shape[1], volume.shape[2]
-            video_height, video_width = original_h, original_w
+            # 7. 원본 이미지 크기 정보 전달 (SAM2는 512x512 입력을 받음)
+            # 중요: SAM2에게는 512x512 이미지를 준다고 알려야 함 (Padding된 이미지이므로)
+            video_height, video_width = self.image_size, self.image_size
             
             # 8. 결과 마스크 초기화
             mask_3d = np.zeros(volume.shape, dtype=np.uint8)
             
-            # 9. MedSAM2 Video Predictor로 3D 전파 (원본 스크립트 방식)
+            # 9. MedSAM2 Video Predictor로 3D 전파
             with torch.inference_mode(), torch.autocast("cuda", dtype=torch.bfloat16):
                 # 상태 초기화
                 inference_state = model.init_state(img_tensor, video_height, video_width)
                 if progress_callback:
                     progress_callback(10, "MedSAM2 상태 초기화 완료")
                 
-                # 참조 슬라이스에 bbox 추가
-                _, out_obj_ids, out_mask_logits = model.add_new_points_or_box(
+                # 참조 마스크 전처리 (리사이즈 + 패딩)
+                # reference_mask: (H, W) -> (1, H, W)
+                ref_mask_tensor = torch.from_numpy(reference_mask).float().unsqueeze(0).unsqueeze(0) # (1, 1, H, W)
+                
+                # Resize Mask
+                ref_mask_resized = torch.nn.functional.interpolate(
+                    ref_mask_tensor,
+                    size=(padding_info['new_h'], padding_info['new_w']),
+                    mode='nearest' # 마스크는 nearest neighbor
+                )
+                
+                # Pad Mask
+                ref_mask_padded = torch.nn.functional.pad(
+                    ref_mask_resized,
+                    (0, padding_info['pad_w'], 0, padding_info['pad_h']),
+                    mode='constant',
+                    value=0
+                )
+                
+                # (1, 1, 512, 512) -> (1, 512, 512)
+                ref_mask_input = ref_mask_padded.squeeze(0)
+                
+                if torch.cuda.is_available():
+                    ref_mask_input = ref_mask_input.cuda()
+
+                # 참조 슬라이스에 마스크 추가 (add_new_mask 사용)
+                # obj_id=1
+                _, out_obj_ids, out_mask_logits = model.add_new_mask(
                     inference_state=inference_state,
                     frame_idx=reference_slice,
                     obj_id=1,
-                    box=np.array(bbox), # 원본 bbox 전달
+                    mask=ref_mask_input
                 )
                 
                 if progress_callback:
-                    progress_callback(20, "참조 슬라이스 설정 완료, 순방향 전파 시작...")
+                    progress_callback(20, "참조 마스크 설정 완료, 순방향 전파 시작...")
                 
                 # Forward propagation (참조 → 끝)
                 forward_count = 0
                 total_forward = volume.shape[0] - reference_slice
                 for out_frame_idx, out_obj_ids, out_mask_logits in model.propagate_in_video(inference_state):
                     if start_slice <= out_frame_idx <= end_slice:
-                        mask = (out_mask_logits[0] > 0.0).cpu().numpy()[0]
-                        mask_3d[out_frame_idx] = mask
+                        # 결과 마스크 (512x512)
+                        mask_512 = (out_mask_logits[0] > 0.0).cpu().numpy()[0]
+                        
+                        # Unpad & Resize back to original
+                        # 1. Crop padding
+                        valid_h = padding_info['new_h']
+                        valid_w = padding_info['new_w']
+                        mask_cropped = mask_512[:valid_h, :valid_w]
+                        
+                        # 2. Resize to original
+                        if mask_cropped.shape != (padding_info['original_h'], padding_info['original_w']):
+                            from PIL import Image
+                            mask_pil = Image.fromarray((mask_cropped * 255).astype(np.uint8))
+                            mask_orig_pil = mask_pil.resize((padding_info['original_w'], padding_info['original_h']), Image.NEAREST)
+                            mask_orig = (np.array(mask_orig_pil) > 128).astype(np.uint8)
+                        else:
+                            mask_orig = mask_cropped.astype(np.uint8)
+                            
+                        mask_3d[out_frame_idx] = mask_orig
                     
                     forward_count += 1
                     if progress_callback and total_forward > 0:
@@ -256,12 +336,12 @@ class MedSAM2InferenceEngine:
                 if progress_callback:
                     progress_callback(55, "역방향 전파 시작...")
                 
-                # 참조 슬라이스에 다시 bbox 추가
-                _, out_obj_ids, out_mask_logits = model.add_new_points_or_box(
+                # 참조 슬라이스에 다시 마스크 추가
+                _, out_obj_ids, out_mask_logits = model.add_new_mask(
                     inference_state=inference_state,
                     frame_idx=reference_slice,
                     obj_id=1,
-                    box=np.array(bbox), # 원본 bbox 전달
+                    mask=ref_mask_input
                 )
                 
                 # Backward propagation (참조 → 시작)
@@ -269,8 +349,23 @@ class MedSAM2InferenceEngine:
                 total_backward = reference_slice
                 for out_frame_idx, out_obj_ids, out_mask_logits in model.propagate_in_video(inference_state, reverse=True):
                     if start_slice <= out_frame_idx < reference_slice:  # 중복 방지
-                        mask = (out_mask_logits[0] > 0.0).cpu().numpy()[0]
-                        mask_3d[out_frame_idx] = mask
+                        # 결과 마스크 (512x512)
+                        mask_512 = (out_mask_logits[0] > 0.0).cpu().numpy()[0]
+                        
+                        # Unpad & Resize back to original
+                        valid_h = padding_info['new_h']
+                        valid_w = padding_info['new_w']
+                        mask_cropped = mask_512[:valid_h, :valid_w]
+                        
+                        if mask_cropped.shape != (padding_info['original_h'], padding_info['original_w']):
+                            from PIL import Image
+                            mask_pil = Image.fromarray((mask_cropped * 255).astype(np.uint8))
+                            mask_orig_pil = mask_pil.resize((padding_info['original_w'], padding_info['original_h']), Image.NEAREST)
+                            mask_orig = (np.array(mask_orig_pil) > 128).astype(np.uint8)
+                        else:
+                            mask_orig = mask_cropped.astype(np.uint8)
+                            
+                        mask_3d[out_frame_idx] = mask_orig
                     
                     backward_count += 1
                     if progress_callback and total_backward > 0:
@@ -341,8 +436,8 @@ class MedSAM2InferenceEngine:
             volume_normalized = (volume_clipped - np.min(volume_clipped)) / (np.max(volume_clipped) - np.min(volume_clipped)) * 255.0
             volume_uint8 = np.uint8(volume_normalized)
             
-            # 3. RGB 변환 및 리사이즈 (원본 스크립트 방식)
-            img_resized = resize_grayscale_to_rgb_and_resize(volume_uint8, self.image_size)
+            # 3. RGB 변환 및 리사이즈 (Padding 적용)
+            img_resized, padding_info = resize_grayscale_to_rgb_and_resize(volume_uint8, self.image_size)
             img_resized = img_resized / 255.0
             img_tensor = torch.from_numpy(img_resized).float()
             
@@ -353,9 +448,17 @@ class MedSAM2InferenceEngine:
             img_tensor -= self.img_mean
             img_tensor /= self.img_std
             
-            # 5. 원본 이미지 크기 정보
-            original_h, original_w = image.shape
-            video_height, video_width = original_h, original_w
+            # 5. 이미지 크기 정보 (SAM2 입력은 512x512)
+            video_height, video_width = self.image_size, self.image_size
+            
+            # 6. Bounding Box Scaling
+            # 원본 좌표 -> 512x512 좌표 (Padding 고려)
+            scale = padding_info['scale']
+            # bbox: [x1, y1, x2, y2]
+            bbox_scaled = np.array(bbox) * scale
+            # Padding은 Right-Bottom에 들어가므로 좌표 이동은 없음 (0,0 기준)
+            
+            logger.info(f"Scaled bbox: {bbox} -> {bbox_scaled}")
             
             # 7. Video Predictor API 사용 (원본 스크립트 방식)
             with torch.inference_mode(), torch.autocast("cuda", dtype=torch.bfloat16):
@@ -367,7 +470,7 @@ class MedSAM2InferenceEngine:
                     inference_state=inference_state,
                     frame_idx=0,  # 단일 슬라이스는 0번 프레임
                     obj_id=1,
-                    box=np.array(bbox), # 원본 bbox 전달
+                    box=bbox_scaled, # Scaled bbox 전달
                 )
                 
                 # 마스크 추출 (512x512 크기)
@@ -379,15 +482,19 @@ class MedSAM2InferenceEngine:
                 
                 logger.info(f"Generated mask shape: {mask_512.shape}")
                 
-                # 8. 원본 이미지 크기로 리사이즈
-                if mask_512.shape != (original_h, original_w):
+                # 8. Unpad & Resize back to original
+                valid_h = padding_info['new_h']
+                valid_w = padding_info['new_w']
+                mask_cropped = mask_512[:valid_h, :valid_w]
+                
+                if mask_cropped.shape != (padding_info['original_h'], padding_info['original_w']):
                     from PIL import Image
-                    mask_pil = Image.fromarray(mask_512 * 255)
-                    mask_resized_pil = mask_pil.resize((original_w, original_h), Image.NEAREST)
+                    mask_pil = Image.fromarray(mask_cropped * 255)
+                    mask_resized_pil = mask_pil.resize((padding_info['original_w'], padding_info['original_h']), Image.NEAREST)
                     mask = (np.array(mask_resized_pil) > 128).astype(np.uint8)
                     logger.info(f"Resized mask from {mask_512.shape} to {mask.shape}")
                 else:
-                    mask = mask_512
+                    mask = mask_cropped
                 
                 logger.info(f"Final mask shape: {mask.shape}, unique values: {np.unique(mask)}")
                 return mask
