@@ -282,8 +282,8 @@ class MedSAM2InferenceEngine:
                     value=0
                 )
                 
-                # (1, 1, 512, 512) -> (1, 512, 512)
-                ref_mask_input = ref_mask_padded.squeeze(0)
+                # (1, 1, 512, 512) -> (512, 512)
+                ref_mask_input = ref_mask_padded.squeeze(0).squeeze(0)
                 
                 if torch.cuda.is_available():
                     ref_mask_input = ref_mask_input.cuda()
