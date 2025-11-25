@@ -290,6 +290,7 @@ class MedSAM2InferenceEngine:
 
                 # 참조 슬라이스에 마스크 추가 (add_new_mask 사용)
                 # obj_id=1
+                logger.info(f"Adding new mask at slice {reference_slice} (start: {start_slice}, end: {end_slice})")
                 _, out_obj_ids, out_mask_logits = model.add_new_mask(
                     inference_state=inference_state,
                     frame_idx=reference_slice,
@@ -297,12 +298,34 @@ class MedSAM2InferenceEngine:
                     mask=ref_mask_input
                 )
                 
+                # 참조 슬라이스 결과 저장 (중요: 이 부분이 빠져있었음)
+                if start_slice <= reference_slice <= end_slice:
+                    # 결과 마스크 (512x512)
+                    mask_512 = (out_mask_logits[0] > 0.0).cpu().numpy()[0]
+                    
+                    # Unpad & Resize back to original
+                    valid_h = padding_info['new_h']
+                    valid_w = padding_info['new_w']
+                    mask_cropped = mask_512[:valid_h, :valid_w]
+                    
+                    if mask_cropped.shape != (padding_info['original_h'], padding_info['original_w']):
+                        from PIL import Image
+                        mask_pil = Image.fromarray((mask_cropped * 255).astype(np.uint8))
+                        mask_orig_pil = mask_pil.resize((padding_info['original_w'], padding_info['original_h']), Image.NEAREST)
+                        mask_orig = (np.array(mask_orig_pil) > 128).astype(np.uint8)
+                    else:
+                        mask_orig = mask_cropped.astype(np.uint8)
+                        
+                    mask_3d[reference_slice] = mask_orig
+                    logger.info(f"Saved reference mask at slice {reference_slice}")
+
                 if progress_callback:
                     progress_callback(20, "참조 마스크 설정 완료, 순방향 전파 시작...")
                 
                 # Forward propagation (참조 → 끝)
                 forward_count = 0
                 total_forward = volume.shape[0] - reference_slice
+                logger.info(f"Starting forward propagation from slice {reference_slice} to {end_slice}")
                 for out_frame_idx, out_obj_ids, out_mask_logits in model.propagate_in_video(inference_state):
                     if start_slice <= out_frame_idx <= end_slice:
                         # 결과 마스크 (512x512)
@@ -324,6 +347,8 @@ class MedSAM2InferenceEngine:
                             mask_orig = mask_cropped.astype(np.uint8)
                             
                         mask_3d[out_frame_idx] = mask_orig
+                        if forward_count % 10 == 0:  # 10개마다 로그
+                            logger.info(f"Forward: saved mask at slice {out_frame_idx}")
                     
                     forward_count += 1
                     if progress_callback and total_forward > 0:
@@ -347,6 +372,7 @@ class MedSAM2InferenceEngine:
                 # Backward propagation (참조 → 시작)
                 backward_count = 0
                 total_backward = reference_slice
+                logger.info(f"Starting backward propagation from slice {reference_slice} to {start_slice}")
                 for out_frame_idx, out_obj_ids, out_mask_logits in model.propagate_in_video(inference_state, reverse=True):
                     if start_slice <= out_frame_idx < reference_slice:  # 중복 방지
                         # 결과 마스크 (512x512)
@@ -366,6 +392,8 @@ class MedSAM2InferenceEngine:
                             mask_orig = mask_cropped.astype(np.uint8)
                             
                         mask_3d[out_frame_idx] = mask_orig
+                        if backward_count % 5 == 0:  # 5개마다 로그
+                            logger.info(f"Backward: saved mask at slice {out_frame_idx}")
                     
                     backward_count += 1
                     if progress_callback and total_backward > 0:

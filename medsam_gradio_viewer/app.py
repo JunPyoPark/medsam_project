@@ -469,16 +469,10 @@ with gr.Blocks(title="MedSAM2 3D 뷰어") as demo:
     seg_chain.then(fn=lambda s: s, inputs=[slice_slider], outputs=[init_slice])
 
     def start_prop(job_id, s, e, init_si, mid, z_total):
-        # 기본값 설정: 전체 볼륨 범위 사용
-        if z_total is not None and z_total > 1:
-            s = 0
-            e = int(z_total) - 1  # 마지막 슬라이스 인덱스
-            init_si = int(mid) if mid is not None else int(z_total // 2)
-        else:
-            # z_total이 없는 경우 입력값 사용 (최소 검증)
-            s = max(0, int(s))
-            e = max(int(s) + 1, int(e))  # end_slice가 start_slice보다 최소 1 크도록
-            init_si = int(init_si)
+        # 입력값 사용 (UI에서 이미 초기화 및 업데이트됨)
+        s = int(s) if s is not None else 0
+        e = int(e) if e is not None else (int(z_total) - 1 if z_total else 0)
+        init_si = int(init_si) if init_si is not None else (int(mid) if mid else 0)
         
         print(f"[start_prop] 3D propagation: start={s}, end={e}, reference={init_si}")
         return trigger_propagation(job_id, s, e, init_si)
