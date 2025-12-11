@@ -97,3 +97,48 @@ export const getSlice = (niftiData, sliceIndex, axis = 'z') => {
 
     return new ImageData(rgbaData, width, height);
 };
+
+export const getMaskSlice = (niftiData, sliceIndex, axis = 'z') => {
+    const { header, image } = niftiData;
+    const dims = header.dims;
+    const xDim = dims[1];
+    const yDim = dims[2];
+
+    let sliceData;
+    let width, height;
+
+    // Helper to get typed array based on datatype
+    let typedData;
+    if (header.datatypeCode === 2) {
+        typedData = new Uint8Array(image);
+    } else if (header.datatypeCode === 4) {
+        typedData = new Int16Array(image);
+    } else if (header.datatypeCode === 16) {
+        typedData = new Float32Array(image);
+    } else {
+        typedData = new Uint8Array(image);
+    }
+
+    if (axis === 'z') {
+        width = xDim;
+        height = yDim;
+        const sliceSize = width * height;
+        const offset = sliceIndex * sliceSize;
+        sliceData = typedData.slice(offset, offset + sliceSize);
+    }
+
+    const rgbaData = new Uint8ClampedArray(width * height * 4);
+    for (let i = 0; i < sliceData.length; i++) {
+        const val = sliceData[i];
+        if (val > 0) {
+            rgbaData[i * 4] = 255;     // R
+            rgbaData[i * 4 + 1] = 0;   // G
+            rgbaData[i * 4 + 2] = 0;   // B
+            rgbaData[i * 4 + 3] = 128; // A (semi-transparent)
+        } else {
+            rgbaData[i * 4 + 3] = 0;   // Transparent
+        }
+    }
+
+    return new ImageData(rgbaData, width, height);
+};

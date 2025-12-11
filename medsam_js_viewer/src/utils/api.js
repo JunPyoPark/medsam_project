@@ -45,3 +45,14 @@ export const triggerPropagation = async (jobId, startSlice, endSlice, referenceS
     });
     return response.data;
 };
+export const getJobResultBlob = async (jobId) => {
+    try {
+        const response = await axios.get(`${API_BASE}/api/v1/jobs/${jobId}/result`, {
+            responseType: 'arraybuffer'
+        });
+        return response.data;
+    } catch (error) {
+        console.error("Error fetching job result blob:", error);
+        throw error;
+    }
+};

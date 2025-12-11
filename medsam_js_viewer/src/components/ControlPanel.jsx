@@ -13,7 +13,8 @@ const ControlPanel = ({
     isProcessing,
     bbox,
     jobId,
-    hasNifti
+    hasNifti,
+    resultBlobUrl
 }) => {
     if (!hasNifti) return null;
 
@@ -93,6 +94,17 @@ const ControlPanel = ({
                     <Activity className="w-4 h-4" />
                     Propagate 3D
                 </button>
+
+                {resultBlobUrl && (
+                    <a
+                        href={resultBlobUrl}
+                        download={`${jobId}_result.nii.gz`}
+                        className="w-full btn-secondary flex items-center justify-center gap-2 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/10"
+                    >
+                        <Download className="w-4 h-4" />
+                        Download Result
+                    </a>
+                )}
             </div>
         </div>
     );

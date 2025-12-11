@@ -1,12 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Header from './components/Header';
 import NiftiUploader from './components/NiftiUploader';
 import SliceViewer from './components/SliceViewer';
 import ControlPanel from './components/ControlPanel';
 import StatusLog from './components/StatusLog';
-import { loadNiftiFile } from './utils/nifti';
-import { createJob, triggerSegmentation, getJobStatus, getJobResult, triggerPropagation } from './utils/api';
+import { loadNiftiFile, getSlice, getMaskSlice } from './utils/nifti';
+import { createJob, triggerSegmentation, getJobStatus, getJobResult, triggerPropagation, getJobResultBlob } from './utils/api';
 import { Loader2 } from 'lucide-react';
+import * as nifti from 'nifti-reader-js';
 
 const API_BASE = 'http://127.0.0.1:8000'; // Should match api.js
 
@@ -14,8 +15,14 @@ function App() {
   const [niftiData, setNiftiData] = useState(null);
   const [currentSlice, setCurrentSlice] = useState(0);
   const [jobId, setJobId] = useState(null);
-  const [bbox, setBbox] = useState(null);
-  const [maskOverlay, setMaskOverlay] = useState(null);
+
+  // Slice-specific state
+  const [bboxes, setBboxes] = useState({}); // { sliceIndex: {x1, y1, x2, y2} }
+  const [maskOverlays, setMaskOverlays] = useState({}); // { sliceIndex: ImageData }
+
+  // 3D Volume state
+  const [maskVolume, setMaskVolume] = useState(null); // Parsed NIfTI object for 3D mask
+
   const [logs, setLogs] = useState([]);
   const [isProcessing, setIsProcessing] = useState(false);
 
@@ -23,10 +30,30 @@ function App() {
   const [startSlice, setStartSlice] = useState(0);
   const [endSlice, setEndSlice] = useState(0);
   const [refSlice, setRefSlice] = useState(0);
+  const [resultBlobUrl, setResultBlobUrl] = useState(null);
 
   const addLog = (message) => {
     const time = new Date().toLocaleTimeString();
     setLogs(prev => [...prev, { time, message }]);
+  };
+
+  // Helper to get current slice artifacts
+  const currentBbox = bboxes[currentSlice] || null;
+
+  // Helper to get current mask overlay
+  // Priority: 3D Volume Slice > 2D Mask Overlay
+  const getCurrentMask = () => {
+    if (maskVolume && niftiData) {
+      // Extract slice from 3D volume
+      // We assume maskVolume has same dimensions/orientation as niftiData
+      try {
+        return getMaskSlice(maskVolume, currentSlice);
+      } catch (e) {
+        console.error("Error extracting mask slice:", e);
+        return null;
+      }
+    }
+    return maskOverlays[currentSlice] || null;
   };
 
   const handleUpload = async (file) => {
@@ -43,19 +70,24 @@ function App() {
       setEndSlice(data.header.dims[3] - 1);
       setRefSlice(midSlice);
 
+      // Reset state
+      setBboxes({});
+      setMaskOverlays({});
+      setMaskVolume(null);
+
       addLog('File loaded locally. Creating job on server...');
 
       // Create job on server
       const response = await createJob(file);
       if (response.job_id) {
         setJobId(response.job_id);
-        addLog(`Job created: ${response.job_id}`);
+        addLog(`Job created: ${response.job_id} `);
       } else {
         addLog('Error: No job ID returned');
       }
     } catch (err) {
       console.error(err);
-      addLog(`Error: ${err.message}`);
+      addLog(`Error: ${err.message} `);
     } finally {
       setIsProcessing(false);
     }
@@ -69,7 +101,7 @@ function App() {
           onComplete(statusData);
           return;
         } else if (statusData.status === 'failed') {
-          addLog(`Job failed: ${statusData.error_details}`);
+          addLog(`Job failed: ${statusData.error_details} `);
           setIsProcessing(false);
           return;
         }
@@ -80,15 +112,22 @@ function App() {
         }
         setTimeout(poll, 2000);
       } catch (err) {
-        addLog(`Polling error: ${err.message}`);
+        addLog(`Polling error: ${err.message} `);
         setIsProcessing(false);
       }
     };
     poll();
   };
 
+  const handleBoxChange = (newBox) => {
+    setBboxes(prev => ({
+      ...prev,
+      [currentSlice]: newBox
+    }));
+  };
+
   const handleSegment2D = async () => {
-    if (!jobId || !bbox) return;
+    if (!jobId || !currentBbox) return;
     setIsProcessing(true);
     addLog(`Starting 2D segmentation on slice ${currentSlice}...`);
 
@@ -106,13 +145,13 @@ function App() {
       // User confirmed original coordinates match Gradio and NIfTI orientation is correct.
       // So we send coordinates as is (just rounded).
       const safeBbox = {
-        x1: Math.round(bbox.x1),
-        y1: Math.round(bbox.y1),
-        x2: Math.round(bbox.x2),
-        y2: Math.round(bbox.y2)
+        x1: Math.round(currentBbox.x1),
+        y1: Math.round(currentBbox.y1),
+        x2: Math.round(currentBbox.x2),
+        y2: Math.round(currentBbox.y2)
       };
 
-      addLog(`Sending BBox: ${JSON.stringify(safeBbox)}`);
+      addLog(`Sending BBox: ${JSON.stringify(safeBbox)} `);
 
       await triggerSegmentation(jobId, safeSlice, safeBbox);
 
@@ -147,19 +186,23 @@ function App() {
               }
             }
 
-            setMaskOverlay(imageData);
+            setMaskOverlays(prev => ({
+              ...prev,
+              [currentSlice]: imageData
+            }));
+
             addLog('Mask overlay updated.');
             setIsProcessing(false);
             setRefSlice(currentSlice); // Update ref slice to current
           };
-          img.src = `data:image/png;base64,${maskBase64}`;
+          img.src = `data: image / png; base64, ${maskBase64} `;
         } else {
           addLog('Error: Invalid result data');
           setIsProcessing(false);
         }
       });
     } catch (err) {
-      addLog(`Error: ${err.message}`);
+      addLog(`Error: ${err.message} `);
       setIsProcessing(false);
     }
   };
@@ -167,7 +210,7 @@ function App() {
   const handlePropagate3D = async () => {
     if (!jobId) return;
     setIsProcessing(true);
-    addLog(`Starting 3D propagation (${startSlice} -> ${endSlice}, ref: ${refSlice})...`);
+    addLog(`Starting 3D propagation(${startSlice} -> ${endSlice}, ref: ${refSlice})...`);
 
     try {
       // We need the mask data from the previous result to pass it back?
@@ -184,22 +227,49 @@ function App() {
 
       await triggerPropagation(jobId, startSlice, endSlice, refSlice, prevResult.result.mask_data);
 
-      pollJobStatus(jobId, (status) => {
+      pollJobStatus(jobId, async (status) => {
         addLog('3D Propagation completed!');
-        const downloadUrl = `${API_BASE}/api/v1/jobs/${jobId}/result`;
-        // Create a clickable link in the logs (or we could add a button in UI)
-        // For now, let's just log it and maybe set a state to show a download button
-        addLog(`Download result: ${downloadUrl}`);
 
-        // Trigger download automatically or show a button?
-        // Let's create a temporary anchor to download
-        const link = document.createElement('a');
-        link.href = downloadUrl;
-        link.download = `${jobId}_result.nii.gz`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        addLog('Download started automatically.');
+        // 1. Download result for visualization
+        try {
+          addLog('Downloading 3D result for visualization...');
+          const blob = await getJobResultBlob(jobId);
+
+          // Parse NIfTI
+          if (nifti.isCompressed(blob)) {
+            const data = nifti.decompress(blob);
+            if (nifti.isNIFTI(data)) {
+              const header = nifti.readHeader(data);
+              const image = nifti.readImage(header, data);
+
+              // Create object compatible with our getSlice utility
+              const volumeObject = {
+                header: header,
+                image: image,
+                // Add helper to get slice data like our loadNiftiFile does
+                getSlice: (sliceIdx) => {
+                  // This logic is duplicated from nifti.js, we should reuse or mock it
+                  // For now, we rely on the fact that getSlice utility takes this object
+                  return null; // getSlice utility handles the extraction
+                }
+              };
+              // Actually, our getSlice utility expects {header, image}. 
+              // We need to make sure the data format matches what getSlice expects.
+              // loadNiftiFile returns an object with getSlice method attached.
+              // Let's just attach the raw data and let getSlice utility handle it if we export it properly.
+              // Wait, getSlice in nifti.js is exported.
+
+              setMaskVolume({ header, image });
+              addLog('3D Mask Volume loaded for visualization.');
+            }
+            // 2. Prepare for manual download
+            const blobUrl = URL.createObjectURL(new Blob([blob]));
+            setResultBlobUrl(blobUrl);
+            addLog('3D Result ready for download.');
+          }
+        } catch (e) {
+          addLog(`Error loading 3D result: ${e.message} `);
+        }
 
         setIsProcessing(false);
       });
@@ -230,9 +300,9 @@ function App() {
                   setCurrentSlice(newSlice);
                   setRefSlice(newSlice);
                 }}
-                onBoxChange={setBbox}
-                maskOverlay={maskOverlay}
-                boundingBox={bbox}
+                onBoxChange={handleBoxChange}
+                maskOverlay={getCurrentMask()}
+                boundingBox={currentBbox}
               />
             </div>
           )}
@@ -261,9 +331,10 @@ function App() {
               refSlice={refSlice}
               setRefSlice={setRefSlice}
               isProcessing={isProcessing}
-              bbox={bbox}
+              bbox={currentBbox}
               jobId={jobId}
               hasNifti={!!niftiData}
+              resultBlobUrl={resultBlobUrl}
             />
 
             <div className="pt-4 border-t border-white/10">
