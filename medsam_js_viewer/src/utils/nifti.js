@@ -34,24 +34,18 @@ export const loadNiftiFile = async (file) => {
 };
 
 export const getSlice = (niftiData, sliceIndex, axis = 'z') => {
+    if (!niftiData) {
+        return null;
+    }
     const { header, image } = niftiData;
-    const dims = header.dims; // [ndim, x, y, z, t, ...]
+
+    const dims = header.dims;
     const xDim = dims[1];
     const yDim = dims[2];
-    const zDim = dims[3];
 
-    let sliceData;
     let width, height;
 
-    // Assuming Int16 or Float32 mostly, but handling generic typed array
-    // nifti-reader-js returns ArrayBuffer, we need to view it correctly
-    // This part is simplified; robust implementation needs to handle datatype code
-
-    // For MedSAM, we usually deal with 3D volumes.
-    // We need to extract the slice.
-
-    // Helper to get typed array based on datatype
-    // 2 = uint8, 4 = int16, 16 = float32
+    // Create typed view locally (fast, no copy)
     let typedData;
     if (header.datatypeCode === 2) {
         typedData = new Uint8Array(image);
@@ -60,39 +54,37 @@ export const getSlice = (niftiData, sliceIndex, axis = 'z') => {
     } else if (header.datatypeCode === 16) {
         typedData = new Float32Array(image);
     } else {
-        // Fallback or error
-        typedData = new Uint8Array(image); // dangerous assumption
+        typedData = new Uint8Array(image);
     }
 
+    let sliceData;
     if (axis === 'z') {
         width = xDim;
         height = yDim;
         const sliceSize = width * height;
         const offset = sliceIndex * sliceSize;
-        sliceData = typedData.slice(offset, offset + sliceSize);
+        // Use subarray for zero-copy view
+        sliceData = typedData.subarray(offset, offset + sliceSize);
     }
 
-    // Revert to Identity (Raw) as per user request.
-    // The user wants the view that results from rotating the previous view (rot90 k=-1) 90 deg left.
-    // This implies Identity.
-
-    // Normalize for display (0-255)
+    // Normalize (O(N))
     let min = Infinity;
     let max = -Infinity;
     for (let i = 0; i < sliceData.length; i++) {
-        if (sliceData[i] < min) min = sliceData[i];
-        if (sliceData[i] > max) max = sliceData[i];
+        const val = sliceData[i];
+        if (val < min) min = val;
+        if (val > max) max = val;
     }
 
     const range = max - min || 1;
 
     const rgbaData = new Uint8ClampedArray(width * height * 4);
+    const buf32 = new Uint32Array(rgbaData.buffer);
+
     for (let i = 0; i < sliceData.length; i++) {
         const val = Math.floor(((sliceData[i] - min) / range) * 255);
-        rgbaData[i * 4] = val;     // R
-        rgbaData[i * 4 + 1] = val; // G
-        rgbaData[i * 4 + 2] = val; // B
-        rgbaData[i * 4 + 3] = 255; // A
+        // A(255) B(val) G(val) R(val) -> Little Endian
+        buf32[i] = (255 << 24) | (val << 16) | (val << 8) | val;
     }
 
     return new ImageData(rgbaData, width, height);
@@ -104,10 +96,8 @@ export const getMaskSlice = (niftiData, sliceIndex, axis = 'z') => {
     const xDim = dims[1];
     const yDim = dims[2];
 
-    let sliceData;
     let width, height;
 
-    // Helper to get typed array based on datatype
     let typedData;
     if (header.datatypeCode === 2) {
         typedData = new Uint8Array(image);
@@ -119,25 +109,23 @@ export const getMaskSlice = (niftiData, sliceIndex, axis = 'z') => {
         typedData = new Uint8Array(image);
     }
 
+    let sliceData;
     if (axis === 'z') {
         width = xDim;
         height = yDim;
         const sliceSize = width * height;
         const offset = sliceIndex * sliceSize;
-        sliceData = typedData.slice(offset, offset + sliceSize);
+        sliceData = typedData.subarray(offset, offset + sliceSize);
     }
 
     const rgbaData = new Uint8ClampedArray(width * height * 4);
+    const buf32 = new Uint32Array(rgbaData.buffer);
+
+    const maskColor = (128 << 24) | (0 << 16) | (0 << 8) | 255;
+    const transparent = 0;
+
     for (let i = 0; i < sliceData.length; i++) {
-        const val = sliceData[i];
-        if (val > 0) {
-            rgbaData[i * 4] = 255;     // R
-            rgbaData[i * 4 + 1] = 0;   // G
-            rgbaData[i * 4 + 2] = 0;   // B
-            rgbaData[i * 4 + 3] = 128; // A (semi-transparent)
-        } else {
-            rgbaData[i * 4 + 3] = 0;   // Transparent
-        }
+        buf32[i] = sliceData[i] > 0 ? maskColor : transparent;
     }
 
     return new ImageData(rgbaData, width, height);

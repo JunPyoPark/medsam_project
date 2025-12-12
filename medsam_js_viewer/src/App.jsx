@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Header from './components/Header';
 import NiftiUploader from './components/NiftiUploader';
 import SliceViewer from './components/SliceViewer';
@@ -40,14 +40,24 @@ function App() {
   // Helper to get current slice artifacts
   const currentBbox = bboxes[currentSlice] || null;
 
+  // Cache for 3D mask slices to avoid recalculation
+  const maskCache = useRef({});
+
   // Helper to get current mask overlay
   // Priority: 3D Volume Slice > 2D Mask Overlay
   const getCurrentMask = () => {
     if (maskVolume && niftiData) {
+      // Check cache first
+      if (maskCache.current[currentSlice]) {
+        return maskCache.current[currentSlice];
+      }
+
       // Extract slice from 3D volume
-      // We assume maskVolume has same dimensions/orientation as niftiData
       try {
-        return getMaskSlice(maskVolume, currentSlice);
+        const maskSlice = getMaskSlice(maskVolume, currentSlice);
+        // Cache it
+        maskCache.current[currentSlice] = maskSlice;
+        return maskSlice;
       } catch (e) {
         console.error("Error extracting mask slice:", e);
         return null;
@@ -74,6 +84,7 @@ function App() {
       setBboxes({});
       setMaskOverlays({});
       setMaskVolume(null);
+      maskCache.current = {};
 
       addLog('File loaded locally. Creating job on server...');
 
@@ -300,7 +311,7 @@ function App() {
                   setCurrentSlice(newSlice);
                   setRefSlice(newSlice);
                 }}
-                onBoxChange={handleBoxChange}
+                onBBoxDrawn={handleBoxChange}
                 maskOverlay={getCurrentMask()}
                 boundingBox={currentBbox}
               />

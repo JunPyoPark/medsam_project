@@ -1,76 +1,115 @@
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect, useState, useMemo } from 'react';
 import { getSlice } from '../utils/nifti';
 
-const SliceViewer = ({ niftiData, currentSlice, onSliceChange, onBoxChange, maskOverlay, boundingBox }) => {
+const SliceViewer = ({ niftiData, currentSlice, maskOverlay, boundingBox, onSliceChange, onBBoxDrawn }) => {
     const canvasRef = useRef(null);
     const containerRef = useRef(null);
     const [isDrawing, setIsDrawing] = useState(false);
     const [startPos, setStartPos] = useState({ x: 0, y: 0 });
     const [tempBox, setTempBox] = useState(null);
 
+    const offscreenCanvasRef = useRef(null);
+
+    // Memoize slice generation to avoid re-calculation on every render
+    const sliceData = useMemo(() => {
+        if (!niftiData) return null;
+        try {
+            return getSlice(niftiData, currentSlice);
+        } catch (e) {
+            console.error("SliceViewer: Error generating slice", e);
+            return null;
+        }
+    }, [niftiData, currentSlice]);
+
     useEffect(() => {
-        if (!niftiData || !canvasRef.current) return;
+        if (!sliceData || !canvasRef.current) return;
 
-        const canvas = canvasRef.current;
-        const ctx = canvas.getContext('2d');
+        let animationFrameId;
 
-        // Get slice data
-        const slice = getSlice(niftiData, currentSlice);
+        const render = () => {
+            const canvas = canvasRef.current;
+            const ctx = canvas.getContext('2d', { alpha: false });
 
-        // Resize canvas to match image dims
-        if (canvas.width !== slice.width || canvas.height !== slice.height) {
-            canvas.width = slice.width;
-            canvas.height = slice.height;
-        }
+            // Resize canvas if needed
+            if (canvas.width !== sliceData.width || canvas.height !== sliceData.height) {
+                canvas.width = sliceData.width;
+                canvas.height = sliceData.height;
+            }
 
-        // Draw slice
-        ctx.putImageData(slice, 0, 0);
+            // Draw slice
+            ctx.putImageData(sliceData, 0, 0);
 
-        // Draw Mask Overlay if exists
-        if (maskOverlay) {
-            // Create temp canvas to draw mask with opacity
-            const tempC = document.createElement('canvas');
-            tempC.width = maskOverlay.width;
-            tempC.height = maskOverlay.height;
-            const tempCtx = tempC.getContext('2d');
-            tempCtx.putImageData(maskOverlay, 0, 0);
+            // Draw Mask Overlay if exists
+            if (maskOverlay) {
+                // Initialize offscreen canvas if needed
+                if (!offscreenCanvasRef.current) {
+                    offscreenCanvasRef.current = document.createElement('canvas');
+                }
+                const offCanvas = offscreenCanvasRef.current;
 
-            ctx.globalAlpha = 0.6;
-            ctx.drawImage(tempC, 0, 0);
-            ctx.globalAlpha = 1.0;
-        }
+                // Resize offscreen canvas if needed
+                if (offCanvas.width !== maskOverlay.width || offCanvas.height !== maskOverlay.height) {
+                    offCanvas.width = maskOverlay.width;
+                    offCanvas.height = maskOverlay.height;
+                }
 
-        // Draw Bounding Box (Temp or Final)
-        const boxToDraw = tempBox || boundingBox;
-        if (boxToDraw) {
-            ctx.strokeStyle = '#00ff00';
-            ctx.lineWidth = 2;
-            const { x1, y1, x2, y2 } = boxToDraw;
-            ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
+                const offCtx = offCanvas.getContext('2d');
+                offCtx.clearRect(0, 0, offCanvas.width, offCanvas.height);
+                offCtx.putImageData(maskOverlay, 0, 0);
 
-            // Draw handles
-            ctx.fillStyle = '#00ff00';
-            const handleSize = 4;
-            ctx.fillRect(x1 - handleSize / 2, y1 - handleSize / 2, handleSize, handleSize);
-            ctx.fillRect(x2 - handleSize / 2, y2 - handleSize / 2, handleSize, handleSize);
-            ctx.fillRect(x1 - handleSize / 2, y2 - handleSize / 2, handleSize, handleSize);
-            ctx.fillRect(x2 - handleSize / 2, y1 - handleSize / 2, handleSize, handleSize);
-        }
+                ctx.drawImage(offCanvas, 0, 0);
+            }
 
-    }, [niftiData, currentSlice, tempBox, boundingBox, maskOverlay]);
+            // Draw Bounding Box (Temp or Final)
+            const boxToDraw = tempBox || boundingBox;
+            if (boxToDraw) {
+                ctx.strokeStyle = '#00ff00';
+                ctx.lineWidth = 2;
+                const { x1, y1, x2, y2 } = boxToDraw;
+                ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
 
-    const handleWheel = (e) => {
-        e.preventDefault();
-        if (!niftiData) return;
+                // Draw handles
+                ctx.fillStyle = '#00ff00';
+                const handleSize = 4;
+                ctx.fillRect(x1 - handleSize / 2, y1 - handleSize / 2, handleSize, handleSize);
+                ctx.fillRect(x2 - handleSize / 2, y2 - handleSize / 2, handleSize, handleSize);
+                ctx.fillRect(x1 - handleSize / 2, y2 - handleSize / 2, handleSize, handleSize);
+                ctx.fillRect(x2 - handleSize / 2, y1 - handleSize / 2, handleSize, handleSize);
+            }
+        };
 
-        const maxSlice = niftiData.header.dims[3] - 1;
-        const delta = e.deltaY > 0 ? 1 : -1;
-        const newSlice = Math.max(0, Math.min(maxSlice, currentSlice + delta));
+        // Use requestAnimationFrame to throttle
+        animationFrameId = requestAnimationFrame(render);
 
-        if (newSlice !== currentSlice) {
-            onSliceChange(newSlice);
-        }
-    };
+        return () => {
+            cancelAnimationFrame(animationFrameId);
+        };
+    }, [sliceData, tempBox, boundingBox, maskOverlay]);
+
+    // Handle wheel event manually to support non-passive listener
+    useEffect(() => {
+        const container = containerRef.current;
+        if (!container) return;
+
+        const onWheel = (e) => {
+            e.preventDefault();
+            if (!niftiData) return;
+
+            const maxSlice = niftiData.header.dims[3] - 1;
+            const delta = e.deltaY > 0 ? 1 : -1;
+            const newSlice = Math.max(0, Math.min(maxSlice, currentSlice + delta));
+
+            if (newSlice !== currentSlice) {
+                onSliceChange(newSlice);
+            }
+        };
+
+        container.addEventListener('wheel', onWheel, { passive: false });
+
+        return () => {
+            container.removeEventListener('wheel', onWheel);
+        };
+    }, [niftiData, currentSlice, onSliceChange]);
 
     const getCanvasCoords = (e) => {
         const canvas = canvasRef.current;
@@ -107,7 +146,7 @@ const SliceViewer = ({ niftiData, currentSlice, onSliceChange, onBoxChange, mask
         if (tempBox) {
             // Only set if box has size
             if (Math.abs(tempBox.x2 - tempBox.x1) > 5 && Math.abs(tempBox.y2 - tempBox.y1) > 5) {
-                onBoxChange(tempBox);
+                onBBoxDrawn(tempBox);
             }
         }
         setTempBox(null);
@@ -117,7 +156,6 @@ const SliceViewer = ({ niftiData, currentSlice, onSliceChange, onBoxChange, mask
         <div
             ref={containerRef}
             className="w-full h-full flex items-center justify-center bg-slate-950/50 relative overflow-hidden group"
-            onWheel={handleWheel}
         >
             <div className="relative shadow-2xl shadow-black/50 rounded-lg overflow-hidden border border-white/10 transition-transform duration-300 group-hover:scale-[1.01]">
                 <canvas
