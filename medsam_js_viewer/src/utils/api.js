@@ -4,7 +4,7 @@ const API_BASE = 'http://127.0.0.1:8000'; // Adjust if needed or use env var
 
 const api = axios.create({
     baseURL: API_BASE,
-    timeout: 30000,
+    timeout: 300000, // 5 minutes
 });
 
 export const createJob = async (file) => {

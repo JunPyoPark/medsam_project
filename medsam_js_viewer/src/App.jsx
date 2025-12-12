@@ -312,8 +312,11 @@ function App() {
                   setRefSlice(newSlice);
                 }}
                 onBBoxDrawn={handleBoxChange}
-                maskOverlay={getCurrentMask()}
+                // If we have a 3D mask volume, we don't pass the 2D overlay.
+                // The worker handles the merged visualization.
+                maskOverlay={maskVolume ? null : getCurrentMask()}
                 boundingBox={currentBbox}
+                maskVolume={maskVolume}
               />
             </div>
           )}

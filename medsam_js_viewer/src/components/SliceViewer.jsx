@@ -1,92 +1,167 @@
-import React, { useRef, useEffect, useState, useMemo } from 'react';
-import { getSlice } from '../utils/nifti';
 
-const SliceViewer = ({ niftiData, currentSlice, maskOverlay, boundingBox, onSliceChange, onBBoxDrawn }) => {
-    const canvasRef = useRef(null);
+import React, { useRef, useEffect, useState, useMemo } from 'react';
+import NiftiWorker from '../workers/niftiWorker?worker'; // Vite worker import
+
+const SliceViewer = ({ niftiData, currentSlice, maskOverlay, boundingBox, onSliceChange, onBBoxDrawn, maskVolume }) => {
     const containerRef = useRef(null);
+    const baseCanvasRef = useRef(null);
+    const maskCanvasRef = useRef(null);
+    const uiCanvasRef = useRef(null);
+
     const [isDrawing, setIsDrawing] = useState(false);
     const [startPos, setStartPos] = useState({ x: 0, y: 0 });
     const [tempBox, setTempBox] = useState(null);
 
-    const offscreenCanvasRef = useRef(null);
+    // Worker State
+    const workerRef = useRef(null);
+    const [bitmaps, setBitmaps] = useState({ base: null, mask: null });
+    const [isWorkerReady, setIsWorkerReady] = useState(false);
 
-    // Memoize slice generation to avoid re-calculation on every render
-    const sliceData = useMemo(() => {
-        if (!niftiData) return null;
-        try {
-            return getSlice(niftiData, currentSlice);
-        } catch (e) {
-            console.error("SliceViewer: Error generating slice", e);
-            return null;
-        }
-    }, [niftiData, currentSlice]);
-
+    // 1. Initialize Worker
     useEffect(() => {
-        if (!sliceData || !canvasRef.current) return;
+        workerRef.current = new NiftiWorker();
 
-        let animationFrameId;
-
-        const render = () => {
-            const canvas = canvasRef.current;
-            const ctx = canvas.getContext('2d', { alpha: false });
-
-            // Resize canvas if needed
-            if (canvas.width !== sliceData.width || canvas.height !== sliceData.height) {
-                canvas.width = sliceData.width;
-                canvas.height = sliceData.height;
-            }
-
-            // Draw slice
-            ctx.putImageData(sliceData, 0, 0);
-
-            // Draw Mask Overlay if exists
-            if (maskOverlay) {
-                // Initialize offscreen canvas if needed
-                if (!offscreenCanvasRef.current) {
-                    offscreenCanvasRef.current = document.createElement('canvas');
-                }
-                const offCanvas = offscreenCanvasRef.current;
-
-                // Resize offscreen canvas if needed
-                if (offCanvas.width !== maskOverlay.width || offCanvas.height !== maskOverlay.height) {
-                    offCanvas.width = maskOverlay.width;
-                    offCanvas.height = maskOverlay.height;
-                }
-
-                const offCtx = offCanvas.getContext('2d');
-                offCtx.clearRect(0, 0, offCanvas.width, offCanvas.height);
-                offCtx.putImageData(maskOverlay, 0, 0);
-
-                ctx.drawImage(offCanvas, 0, 0);
-            }
-
-            // Draw Bounding Box (Temp or Final)
-            const boxToDraw = tempBox || boundingBox;
-            if (boxToDraw) {
-                ctx.strokeStyle = '#00ff00';
-                ctx.lineWidth = 2;
-                const { x1, y1, x2, y2 } = boxToDraw;
-                ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
-
-                // Draw handles
-                ctx.fillStyle = '#00ff00';
-                const handleSize = 4;
-                ctx.fillRect(x1 - handleSize / 2, y1 - handleSize / 2, handleSize, handleSize);
-                ctx.fillRect(x2 - handleSize / 2, y2 - handleSize / 2, handleSize, handleSize);
-                ctx.fillRect(x1 - handleSize / 2, y2 - handleSize / 2, handleSize, handleSize);
-                ctx.fillRect(x2 - handleSize / 2, y1 - handleSize / 2, handleSize, handleSize);
+        workerRef.current.onmessage = (e) => {
+            const { type, payload } = e.data;
+            if (type === 'IMAGE_LOADED') {
+                setIsWorkerReady(true);
+            } else if (type === 'SLICE_READY') {
+                const { sliceIndex, baseBitmap, maskBitmap } = payload;
+                // Only update if it matches current slice (discard old requests)
+                // Note: In a real app we might want to cache these
+                setBitmaps({ base: baseBitmap, mask: maskBitmap });
+            } else if (type === 'ERROR') {
+                console.error("Worker Error:", payload);
             }
         };
-
-        // Use requestAnimationFrame to throttle
-        animationFrameId = requestAnimationFrame(render);
 
         return () => {
-            cancelAnimationFrame(animationFrameId);
+            workerRef.current.terminate();
         };
-    }, [sliceData, tempBox, boundingBox, maskOverlay]);
+    }, []);
 
-    // Handle wheel event manually to support non-passive listener
+    // 2. Send Data to Worker
+    useEffect(() => {
+        if (!workerRef.current || !niftiData) return;
+
+        // We need to send the raw buffer. 
+        // niftiData.image is an ArrayBuffer or TypedArray.
+        // We should send the original ArrayBuffer if possible, or a copy.
+        // Since niftiData is prop, we might not want to transfer it (it would empty the prop).
+        // So we send a copy.
+        // Wait, niftiData.image is the raw image data buffer.
+        // Let's send the whole file data if we have it, or just the image.
+        // Our worker expects the file data to parse header itself?
+        // Let's look at niftiWorker.js: expects { data } in LOAD_IMAGE.
+
+        // We need to pass the raw ArrayBuffer of the file.
+        // But niftiData from loadNiftiFile returns { header, image, data }.
+        // 'data' is the decompressed buffer or original buffer.
+        if (niftiData.data) {
+            workerRef.current.postMessage({
+                type: 'LOAD_IMAGE',
+                payload: { data: niftiData.data }
+            });
+        }
+    }, [niftiData]);
+
+    // 3. Send Mask Volume to Worker
+    useEffect(() => {
+        if (!workerRef.current || !maskVolume) return;
+
+        // Sanitize header to remove functions (DataCloneError fix)
+        const safeHeader = JSON.parse(JSON.stringify(maskVolume.header));
+
+        workerRef.current.postMessage({
+            type: 'LOAD_MASK',
+            payload: { header: safeHeader, image: maskVolume.image }
+        });
+    }, [maskVolume]);
+
+
+    // 4. Request Slice
+    useEffect(() => {
+        if (!workerRef.current || !isWorkerReady) return;
+
+        workerRef.current.postMessage({
+            type: 'GET_SLICE',
+            payload: { sliceIndex: currentSlice }
+        });
+    }, [currentSlice, isWorkerReady, maskVolume]); // Re-request if mask volume changes
+
+
+    // 5. Render Base Layer
+    useEffect(() => {
+        const canvas = baseCanvasRef.current;
+        if (!canvas || !bitmaps.base) return;
+
+        const ctx = canvas.getContext('2d', { alpha: false });
+
+        if (canvas.width !== bitmaps.base.width || canvas.height !== bitmaps.base.height) {
+            canvas.width = bitmaps.base.width;
+            canvas.height = bitmaps.base.height;
+        }
+
+        ctx.drawImage(bitmaps.base, 0, 0);
+    }, [bitmaps.base]);
+
+    // 6. Render Mask Layer (2D Overlay Only)
+    useEffect(() => {
+        const canvas = maskCanvasRef.current;
+        if (!canvas) return;
+
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // Since App.jsx now passes null for maskOverlay if maskVolume exists,
+        // we can simply check for maskOverlay here.
+        if (maskOverlay) {
+            createImageBitmap(maskOverlay).then(bmp => {
+                if (canvas.width !== bmp.width || canvas.height !== bmp.height) {
+                    canvas.width = bmp.width;
+                    canvas.height = bmp.height;
+                }
+                ctx.drawImage(bmp, 0, 0);
+            });
+        }
+    }, [maskOverlay]);
+
+    // 7. Render UI Layer
+    useEffect(() => {
+        const canvas = uiCanvasRef.current;
+        if (!canvas) return;
+
+        // Sync dimensions with base canvas if possible, or container
+        // For simplicity, match base slice dimensions if available
+        if (bitmaps.base) {
+            if (canvas.width !== bitmaps.base.width || canvas.height !== bitmaps.base.height) {
+                canvas.width = bitmaps.base.width;
+                canvas.height = bitmaps.base.height;
+            }
+        }
+
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        const boxToDraw = tempBox || boundingBox;
+        if (boxToDraw) {
+            ctx.strokeStyle = '#00ff00';
+            ctx.lineWidth = 2;
+            const { x1, y1, x2, y2 } = boxToDraw;
+            ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
+
+            // Draw handles
+            ctx.fillStyle = '#00ff00';
+            const handleSize = 4;
+            ctx.fillRect(x1 - handleSize / 2, y1 - handleSize / 2, handleSize, handleSize);
+            ctx.fillRect(x2 - handleSize / 2, y2 - handleSize / 2, handleSize, handleSize);
+            ctx.fillRect(x1 - handleSize / 2, y2 - handleSize / 2, handleSize, handleSize);
+            ctx.fillRect(x2 - handleSize / 2, y1 - handleSize / 2, handleSize, handleSize);
+        }
+    }, [tempBox, boundingBox, bitmaps.base]); // Re-render UI when box changes or slice dims change
+
+
+    // Event Handling
     useEffect(() => {
         const container = containerRef.current;
         if (!container) return;
@@ -112,7 +187,7 @@ const SliceViewer = ({ niftiData, currentSlice, maskOverlay, boundingBox, onSlic
     }, [niftiData, currentSlice, onSliceChange]);
 
     const getCanvasCoords = (e) => {
-        const canvas = canvasRef.current;
+        const canvas = uiCanvasRef.current; // Use UI canvas for coords
         const rect = canvas.getBoundingClientRect();
         const scaleX = canvas.width / rect.width;
         const scaleY = canvas.height / rect.height;
@@ -158,9 +233,22 @@ const SliceViewer = ({ niftiData, currentSlice, maskOverlay, boundingBox, onSlic
             className="w-full h-full flex items-center justify-center bg-slate-950/50 relative overflow-hidden group"
         >
             <div className="relative shadow-2xl shadow-black/50 rounded-lg overflow-hidden border border-white/10 transition-transform duration-300 group-hover:scale-[1.01]">
+                {/* Layer 1: Base Image */}
                 <canvas
-                    ref={canvasRef}
-                    className="cursor-crosshair block max-h-[85vh] max-w-full object-contain"
+                    ref={baseCanvasRef}
+                    className="block max-h-[85vh] max-w-full object-contain"
+                />
+
+                {/* Layer 2: Mask Overlay */}
+                <canvas
+                    ref={maskCanvasRef}
+                    className="absolute inset-0 w-full h-full pointer-events-none"
+                />
+
+                {/* Layer 3: UI / Interaction */}
+                <canvas
+                    ref={uiCanvasRef}
+                    className="absolute inset-0 w-full h-full cursor-crosshair"
                     onMouseDown={handleMouseDown}
                     onMouseMove={handleMouseMove}
                     onMouseUp={handleMouseUp}
