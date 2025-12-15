@@ -1,65 +1,69 @@
-# MedSAM JS Frontend
+# MedSAM JS 프론트엔드 (MedSAM JS Frontend)
 
-This is a new, React-based frontend for the MedSAM project, designed to replace the temporary Gradio viewer. It offers a more responsive and user-friendly interface for 3D medical image segmentation.
+이 프로젝트는 임시 Gradio 뷰어를 대체하기 위해 설계된 새로운 React 기반의 MedSAM 프론트엔드입니다. 3D 의료 이미지 분할(Segmentation)을 위한 더 반응성이 뛰어나고 사용자 친화적인 인터페이스를 제공합니다.
 
-## Features
+## 주요 기능
 
-- **Interactive Slice Viewer**: Navigate through NIfTI slices using the mouse wheel.
-- **Canvas-based Drawing**: Draw bounding boxes directly on the image for 2D segmentation.
-- **Real-time Feedback**: View segmentation results overlaid on the image immediately.
-- **3D Propagation**: Easily configure and trigger 3D propagation tasks.
-- **Status Logging**: Monitor the progress of your tasks with a detailed system log.
-- **Modern UI/UX**: 
-    - **Glassmorphism Design**: Sleek, dark-themed interface with translucent panels.
-    - **Responsive Layout**: Full-screen viewer with floating controls.
-    - **Help Modal**: Built-in quick guide for new users.
+  - **대화형 슬라이스 뷰어**: 마우스 휠을 사용하여 NIfTI 슬라이스를 탐색할 수 있습니다.
+  - **캔버스 기반 그리기**: 2D 분할을 위해 이미지 위에 직접 바운딩 박스(Bounding box)를 그릴 수 있습니다.
+  - **실시간 피드백**: 이미지 위에 오버레이 된 분할 결과를 즉시 확인할 수 있습니다.
+  - **3D 전파(Propagation)**: 3D 전파 작업을 손쉽게 설정하고 실행할 수 있습니다.
+  - **상태 로깅**: 상세한 시스템 로그를 통해 작업의 진행 상황을 모니터링할 수 있습니다.
+  - **최신 UI/UX**:
+      - **글래스모피즘(Glassmorphism) 디자인**: 반투명 패널이 적용된 세련된 다크 테마 인터페이스입니다.
+      - **반응형 레이아웃**: 플로팅 컨트롤 패널이 포함된 전체 화면 뷰어를 제공합니다.
+      - **도움말 모달**: 신규 사용자를 위한 퀵 가이드가 내장되어 있습니다.
 
-## Prerequisites
+## 사전 요구 사항
 
-- Node.js (v18 or higher)
-- npm
+  - Node.js (v18 이상)
+  - npm
 
-## Getting Started
+## 시작하기
 
-1.  **Start the Backend API**:
-    Ensure the MedSAM API server is running.
+1.  **백엔드 API 시작**:
+    MedSAM API 서버가 실행 중인지 확인하십시오.
+
     ```bash
     ./start_server.sh
     ```
 
-2.  **Start the Frontend**:
-    Run the startup script:
+2.  **프론트엔드 시작**:
+    시작 스크립트를 실행합니다:
+
     ```bash
     ./scripts/start_js_frontend.sh
     ```
-    Or manually:
+
+    또는 수동으로 실행할 수 있습니다:
+
     ```bash
     cd medsam_js_viewer
     npm install
     npm run dev
     ```
 
-3.  **Access the App**:
-    Open your browser and navigate to `http://localhost:5173`.
+3.  **앱 접속**:
+    브라우저를 열고 `http://localhost:5173`으로 이동합니다.
 
-## Usage
+## 사용법
 
-1.  **Upload**: Drag and drop a `.nii.gz` file into the upload area.
-2.  **Navigate**: Use the mouse wheel to scroll through slices.
-3.  **Segment 2D**:
-    - Draw a bounding box around the object of interest on a slice.
-    - Click "Segment 2D" in the control panel.
-    - The segmentation mask will appear as a red overlay.
-4.  **Propagate 3D**:
-    - Set the "Start Slice" and "End Slice" for propagation.
-    - The "Ref Slice" is automatically set to the slice you just segmented.
-    - Click "Propagate 3D".
-    - Wait for the process to complete and download the result.
+1.  **업로드**: `.nii.gz` 파일을 업로드 영역으로 드래그 앤 드롭합니다.
+2.  **탐색**: 마우스 휠을 사용하여 슬라이스를 스크롤합니다.
+3.  **2D 분할 (Segment 2D)**:
+      - 슬라이스에서 관심 있는 객체 주변에 바운딩 박스를 그립니다.
+      - 컨트롤 패널에서 "Segment 2D"를 클릭합니다.
+      - 분할 마스크가 빨간색 오버레이로 나타납니다.
+4.  **3D 전파 (Propagate 3D)**:
+      - 전파할 "Start Slice"(시작 슬라이스)와 "End Slice"(종료 슬라이스) 범위를 설정합니다.
+      - "Ref Slice"(참조 슬라이스)는 방금 분할 작업을 수행한 슬라이스로 자동 설정됩니다.
+      - "Propagate 3D"를 클릭합니다.
+      - 프로세스가 완료될 때까지 기다린 후 결과를 다운로드합니다.
 
-## Tech Stack
+## 기술 스택
 
-- **React**: UI Library
-- **Vite**: Build Tool
-- **Tailwind CSS**: Styling
-- **nifti-reader-js**: NIfTI File Parsing
-- **Axios**: API Communication
+  - **React**: UI 라이브러리
+  - **Vite**: 빌드 도구
+  - **Tailwind CSS**: 스타일링
+  - **nifti-reader-js**: NIfTI 파일 파싱
+  - **Axios**: API 통신
