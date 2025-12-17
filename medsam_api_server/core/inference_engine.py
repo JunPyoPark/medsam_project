@@ -225,7 +225,7 @@ class MedSAM2InferenceEngine:
             import io
 
             mask_bytes = base64.b64decode(reference_mask_b64)
-            mask_img = Image.open(io.BytesIO(mask_bytes))
+            mask_img = Image.open(io.BytesIO(mask_bytes)).convert('L')
             reference_mask = np.array(mask_img) > 0
             logger.info(f"Reference mask shape: {reference_mask.shape}")
             

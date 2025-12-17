@@ -2,7 +2,7 @@
 import React, { useRef, useEffect, useState, useMemo } from 'react';
 import NiftiWorker from '../workers/niftiWorker?worker'; // Vite worker import
 
-const SliceViewer = ({ niftiData, currentSlice, maskOverlay, boundingBox, onSliceChange, onBBoxDrawn, maskVolume }) => {
+const SliceViewer = ({ niftiData, currentSlice, maskOverlay, boundingBox, onSliceChange, onBBoxDrawn, maskVolume, editMode, brushSize, onMaskChange }) => {
     const containerRef = useRef(null);
     const baseCanvasRef = useRef(null);
     const maskCanvasRef = useRef(null);
@@ -201,30 +201,70 @@ const SliceViewer = ({ niftiData, currentSlice, maskOverlay, boundingBox, onSlic
         const coords = getCanvasCoords(e);
         setStartPos(coords);
         setIsDrawing(true);
-        setTempBox(null);
+
+        if (editMode === 'bbox') {
+            setTempBox(null);
+        } else if (editMode === 'brush' || editMode === 'eraser') {
+            drawOnMask(coords);
+        }
     };
 
     const handleMouseMove = (e) => {
-        if (!isDrawing) return;
         const coords = getCanvasCoords(e);
-        setTempBox({
-            x1: Math.min(startPos.x, coords.x),
-            y1: Math.min(startPos.y, coords.y),
-            x2: Math.max(startPos.x, coords.x),
-            y2: Math.max(startPos.y, coords.y)
-        });
+
+        if (editMode === 'bbox') {
+            if (!isDrawing) return;
+            setTempBox({
+                x1: Math.min(startPos.x, coords.x),
+                y1: Math.min(startPos.y, coords.y),
+                x2: Math.max(startPos.x, coords.x),
+                y2: Math.max(startPos.y, coords.y)
+            });
+        } else if (editMode === 'brush' || editMode === 'eraser') {
+            if (isDrawing) {
+                drawOnMask(coords);
+            }
+        }
     };
 
     const handleMouseUp = (e) => {
         if (!isDrawing) return;
         setIsDrawing(false);
-        if (tempBox) {
-            // Only set if box has size
-            if (Math.abs(tempBox.x2 - tempBox.x1) > 5 && Math.abs(tempBox.y2 - tempBox.y1) > 5) {
-                onBBoxDrawn(tempBox);
+
+        if (editMode === 'bbox') {
+            if (tempBox) {
+                if (Math.abs(tempBox.x2 - tempBox.x1) > 5 && Math.abs(tempBox.y2 - tempBox.y1) > 5) {
+                    onBBoxDrawn(tempBox);
+                }
+            }
+            setTempBox(null);
+        } else if (editMode === 'brush' || editMode === 'eraser') {
+            // Save the mask change
+            const canvas = maskCanvasRef.current;
+            if (canvas && onMaskChange) {
+                const ctx = canvas.getContext('2d');
+                const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                onMaskChange(imageData);
             }
         }
-        setTempBox(null);
+    };
+
+    const drawOnMask = (coords) => {
+        const canvas = maskCanvasRef.current;
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+
+        ctx.beginPath();
+        ctx.arc(coords.x, coords.y, brushSize / 2, 0, Math.PI * 2);
+
+        if (editMode === 'eraser') {
+            ctx.globalCompositeOperation = 'destination-out';
+            ctx.fill();
+            ctx.globalCompositeOperation = 'source-over';
+        } else {
+            ctx.fillStyle = 'rgba(255, 0, 0, 0.5)'; // Match mask color
+            ctx.fill();
+        }
     };
 
     return (

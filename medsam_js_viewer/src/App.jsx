@@ -32,6 +32,10 @@ function App() {
   const [refSlice, setRefSlice] = useState(0);
   const [resultBlobUrl, setResultBlobUrl] = useState(null);
 
+  // Editing State
+  const [editMode, setEditMode] = useState('bbox'); // 'view', 'bbox', 'brush', 'eraser'
+  const [brushSize, setBrushSize] = useState(10);
+
   const addLog = (message) => {
     const time = new Date().toLocaleTimeString();
     setLogs(prev => [...prev, { time, message }]);
@@ -104,7 +108,7 @@ function App() {
     }
   };
 
-  const pollJobStatus = async (jid, onComplete) => {
+  const pollJobStatus = async (jid, onComplete, onError) => {
     const poll = async () => {
       try {
         const statusData = await getJobStatus(jid);
@@ -112,7 +116,8 @@ function App() {
           onComplete(statusData);
           return;
         } else if (statusData.status === 'failed') {
-          addLog(`Job failed: ${statusData.error_details} `);
+          console.error("Job Failed:", statusData);
+          if (onError) onError(statusData.error_details || "Unknown error");
           setIsProcessing(false);
           return;
         }
@@ -123,7 +128,8 @@ function App() {
         }
         setTimeout(poll, 2000);
       } catch (err) {
-        addLog(`Polling error: ${err.message} `);
+        console.error("Polling Error:", err);
+        addLog(`Polling error: ${err.message || JSON.stringify(err)}`);
         setIsProcessing(false);
       }
     };
@@ -231,12 +237,32 @@ function App() {
 
       // Wait, app.py fetches result from backend and sends it back in 'mask_data'.
       // So we need to do the same.
-      const prevResult = await getJobResult(jobId);
-      if (!prevResult.success || !prevResult.result.mask_data) {
-        throw new Error("No 2D mask available for propagation");
+      // Use the local mask data (which might be edited)
+      const currentMaskData = maskOverlays[refSlice];
+
+      let maskBase64 = null;
+      if (currentMaskData) {
+        // Convert ImageData to Base64
+        const canvas = document.createElement('canvas');
+        canvas.width = currentMaskData.width;
+        canvas.height = currentMaskData.height;
+        const ctx = canvas.getContext('2d');
+        ctx.putImageData(currentMaskData, 0, 0);
+        const dataURL = canvas.toDataURL('image/png');
+        maskBase64 = dataURL.split(',')[1]; // Remove prefix
+      } else {
+        // Fallback to backend result if local not found (shouldn't happen if segmented)
+        const prevResult = await getJobResult(jobId);
+        if (prevResult.success && prevResult.result.mask_data) {
+          maskBase64 = prevResult.result.mask_data;
+        }
       }
 
-      await triggerPropagation(jobId, startSlice, endSlice, refSlice, prevResult.result.mask_data);
+      if (!maskBase64) {
+        throw new Error("No mask available for propagation. Please segment a slice first.");
+      }
+
+      await triggerPropagation(jobId, startSlice, endSlice, refSlice, maskBase64);
 
       pollJobStatus(jobId, async (status) => {
         addLog('3D Propagation completed!');
@@ -286,7 +312,8 @@ function App() {
       });
 
     } catch (err) {
-      addLog(`Error: ${err.message}`);
+      console.error("Propagation Error:", err);
+      addLog(`Error: ${err.message || JSON.stringify(err)}`);
       setIsProcessing(false);
     }
   };
@@ -309,6 +336,8 @@ function App() {
                 currentSlice={currentSlice}
                 onSliceChange={(newSlice) => {
                   setCurrentSlice(newSlice);
+                  // Update ref slice if we are just browsing? No, ref slice is set by segmentation.
+                  // But we might want to sync them.
                   setRefSlice(newSlice);
                 }}
                 onBBoxDrawn={handleBoxChange}
@@ -317,6 +346,15 @@ function App() {
                 maskOverlay={maskVolume ? null : getCurrentMask()}
                 boundingBox={currentBbox}
                 maskVolume={maskVolume}
+                // Edit Props
+                editMode={editMode}
+                brushSize={brushSize}
+                onMaskChange={(newMaskData) => {
+                  setMaskOverlays(prev => ({
+                    ...prev,
+                    [currentSlice]: newMaskData
+                  }));
+                }}
               />
             </div>
           )}
@@ -349,6 +387,10 @@ function App() {
               jobId={jobId}
               hasNifti={!!niftiData}
               resultBlobUrl={resultBlobUrl}
+              editMode={editMode}
+              setEditMode={setEditMode}
+              brushSize={brushSize}
+              setBrushSize={setBrushSize}
             />
 
             <div className="pt-4 border-t border-white/10">

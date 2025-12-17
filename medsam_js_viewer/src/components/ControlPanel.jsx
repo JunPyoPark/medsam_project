@@ -1,5 +1,5 @@
 import React from 'react';
-import { Play, Layers, BoxSelect, Download, Activity } from 'lucide-react';
+import { Play, Layers, BoxSelect, Download, Activity, Brush, Eraser, MousePointer2 } from 'lucide-react';
 
 const ControlPanel = ({
     onSegment2D,
@@ -14,7 +14,11 @@ const ControlPanel = ({
     bbox,
     jobId,
     hasNifti,
-    resultBlobUrl
+    resultBlobUrl,
+    editMode,
+    setEditMode,
+    brushSize,
+    setBrushSize
 }) => {
     if (!hasNifti) return null;
 
@@ -26,6 +30,47 @@ const ControlPanel = ({
                     <BoxSelect className="w-5 h-5" />
                     <h3 className="font-semibold">2D Segmentation</h3>
                 </div>
+
+                {/* Tool Selection */}
+                <div className="grid grid-cols-4 gap-2 bg-slate-950/30 p-1 rounded-lg border border-white/5">
+                    {[
+                        { id: 'view', icon: MousePointer2, label: 'View' },
+                        { id: 'bbox', icon: BoxSelect, label: 'Box' },
+                        { id: 'brush', icon: Brush, label: 'Brush' },
+                        { id: 'eraser', icon: Eraser, label: 'Erase' }
+                    ].map(tool => (
+                        <button
+                            key={tool.id}
+                            onClick={() => setEditMode(tool.id)}
+                            className={`flex flex-col items-center justify-center py-2 rounded-md transition-all duration-200 ${editMode === tool.id
+                                ? 'bg-indigo-500/20 text-indigo-300 shadow-lg shadow-indigo-500/10 border border-indigo-500/30'
+                                : 'text-slate-500 hover:text-slate-300 hover:bg-white/5'
+                                }`}
+                            title={tool.label}
+                        >
+                            <tool.icon className="w-4 h-4 mb-1" />
+                            <span className="text-[10px] font-medium">{tool.label}</span>
+                        </button>
+                    ))}
+                </div>
+
+                {/* Brush Size Slider */}
+                {(editMode === 'brush' || editMode === 'eraser') && (
+                    <div className="space-y-2 animate-fade-in">
+                        <div className="flex justify-between text-xs text-slate-400">
+                            <span>Size</span>
+                            <span>{brushSize}px</span>
+                        </div>
+                        <input
+                            type="range"
+                            min="1"
+                            max="50"
+                            value={brushSize}
+                            onChange={(e) => setBrushSize(parseInt(e.target.value))}
+                            className="w-full h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-500"
+                        />
+                    </div>
+                )}
 
                 <div className="text-sm text-slate-400 bg-slate-950/30 p-3 rounded-lg border border-white/5">
                     <p className="flex justify-between">
