@@ -57,6 +57,18 @@ const HelpModal = ({ isOpen, onClose }) => {
                     </div>
 
                     <div className="flex gap-4 items-start p-3 rounded-lg bg-white/5 border border-white/5">
+                        <div className="p-2 bg-pink-500/20 rounded-lg shrink-0">
+                            <MousePointer2 className="w-5 h-5 text-pink-400" />
+                        </div>
+                        <div>
+                            <h3 className="font-medium text-slate-200">4. Edit Mask</h3>
+                            <p className="text-sm text-slate-400 mt-1">
+                                Use the Brush and Eraser tools to refine the generated mask before propagation.
+                            </p>
+                        </div>
+                    </div>
+
+                    <div className="flex gap-4 items-start p-3 rounded-lg bg-white/5 border border-white/5">
                         <div className="p-2 bg-violet-500/20 rounded-lg shrink-0">
                             <Layers className="w-5 h-5 text-violet-400" />
                         </div>
