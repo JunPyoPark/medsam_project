@@ -105,12 +105,20 @@ const SliceViewer = ({ niftiData, currentSlice, maskOverlay, boundingBox, onSlic
         ctx.drawImage(bitmaps.base, 0, 0);
     }, [bitmaps.base]);
 
+    const skipNextMaskUpdate = useRef(false);
+
     // 6. Render Mask Layer (2D Overlay Only)
     useEffect(() => {
         const canvas = maskCanvasRef.current;
         if (!canvas) return;
 
-        const ctx = canvas.getContext('2d');
+        // Skip redraw if the update was triggered by our own drawing
+        if (skipNextMaskUpdate.current) {
+            skipNextMaskUpdate.current = false;
+            return;
+        }
+
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
         // Since App.jsx now passes null for maskOverlay if maskVolume exists,
@@ -209,8 +217,39 @@ const SliceViewer = ({ niftiData, currentSlice, maskOverlay, boundingBox, onSlic
         }
     };
 
+    const cursorRef = useRef(null);
+    const [canvasScale, setCanvasScale] = useState(1); // Keep this state but update less frequently? 
+    // Actually, let's just calculate scale on the fly or use a ref if we want to avoid re-renders for scale updates.
+    // But scale only changes on resize.
+
+    // Better: Update scale in a useEffect on mount/resize.
+    useEffect(() => {
+        const updateScale = () => {
+            const canvas = uiCanvasRef.current;
+            if (canvas) {
+                const rect = canvas.getBoundingClientRect();
+                setCanvasScale(rect.width / canvas.width);
+            }
+        };
+
+        window.addEventListener('resize', updateScale);
+        updateScale(); // Initial
+
+        return () => window.removeEventListener('resize', updateScale);
+    }, [bitmaps.base]); // Update when base image changes (dims change)
+
     const handleMouseMove = (e) => {
         const coords = getCanvasCoords(e);
+
+        // Direct DOM manipulation for performance
+        if (cursorRef.current && uiCanvasRef.current) {
+            const rect = uiCanvasRef.current.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+
+            cursorRef.current.style.transform = `translate(${x}px, ${y}px) translate(-50%, -50%)`;
+            cursorRef.current.style.display = 'block';
+        }
 
         if (editMode === 'bbox') {
             if (!isDrawing) return;
@@ -242,17 +281,42 @@ const SliceViewer = ({ niftiData, currentSlice, maskOverlay, boundingBox, onSlic
             // Save the mask change
             const canvas = maskCanvasRef.current;
             if (canvas && onMaskChange) {
-                const ctx = canvas.getContext('2d');
+                // Set flag to skip the next prop update since we already have the data on canvas
+                skipNextMaskUpdate.current = true;
+
+                const ctx = canvas.getContext('2d', { willReadFrequently: true });
                 const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-                onMaskChange(imageData);
+
+                // Compress to 1-channel (Uint8Array)
+                const len = canvas.width * canvas.height;
+                const compressedData = new Uint8Array(len);
+                const rawData = imageData.data;
+
+                for (let i = 0; i < len; i++) {
+                    // Check Red channel (or Alpha)
+                    compressedData[i] = rawData[i * 4] > 0 ? 1 : 0;
+                }
+
+                onMaskChange({
+                    data: compressedData,
+                    width: canvas.width,
+                    height: canvas.height
+                });
             }
+        }
+    };
+
+    const handleMouseLeave = () => {
+        handleMouseUp();
+        if (cursorRef.current) {
+            cursorRef.current.style.display = 'none';
         }
     };
 
     const drawOnMask = (coords) => {
         const canvas = maskCanvasRef.current;
         if (!canvas) return;
-        const ctx = canvas.getContext('2d');
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
 
         ctx.beginPath();
         ctx.arc(coords.x, coords.y, brushSize / 2, 0, Math.PI * 2);
@@ -262,7 +326,9 @@ const SliceViewer = ({ niftiData, currentSlice, maskOverlay, boundingBox, onSlic
             ctx.fill();
             ctx.globalCompositeOperation = 'source-over';
         } else {
-            ctx.fillStyle = 'rgba(255, 0, 0, 0.5)'; // Match mask color
+            // Use solid color for data robustness
+            // Visual transparency is handled by canvas opacity
+            ctx.fillStyle = 'rgba(255, 0, 0, 1.0)';
             ctx.fill();
         }
     };
@@ -282,18 +348,36 @@ const SliceViewer = ({ niftiData, currentSlice, maskOverlay, boundingBox, onSlic
                 {/* Layer 2: Mask Overlay */}
                 <canvas
                     ref={maskCanvasRef}
-                    className="absolute inset-0 w-full h-full pointer-events-none"
+                    className="absolute inset-0 w-full h-full pointer-events-none transition-opacity duration-200"
+                    style={{ opacity: 0.5 }} // Visual transparency only, data is solid
                 />
 
                 {/* Layer 3: UI / Interaction */}
                 <canvas
                     ref={uiCanvasRef}
-                    className="absolute inset-0 w-full h-full cursor-crosshair"
+                    className={`absolute inset-0 w-full h-full ${(editMode === 'brush' || editMode === 'eraser') ? 'cursor-none' : 'cursor-crosshair'
+                        }`}
                     onMouseDown={handleMouseDown}
                     onMouseMove={handleMouseMove}
                     onMouseUp={handleMouseUp}
-                    onMouseLeave={handleMouseUp}
+                    onMouseLeave={handleMouseLeave}
                 />
+
+                {/* Brush Cursor Overlay - Optimized */}
+                {(editMode === 'brush' || editMode === 'eraser') && (
+                    <div
+                        ref={cursorRef}
+                        className="pointer-events-none absolute border border-white bg-white/20 rounded-full shadow-sm z-50"
+                        style={{
+                            left: 0,
+                            top: 0,
+                            width: brushSize * canvasScale,
+                            height: brushSize * canvasScale,
+                            display: 'none', // Initially hidden, shown by JS
+                            willChange: 'transform' // Hint for GPU acceleration
+                        }}
+                    />
+                )}
 
                 {/* Slice Indicator Badge */}
                 <div className="absolute top-4 left-4 glass px-3 py-1.5 rounded-full text-xs font-medium text-white flex items-center gap-2 pointer-events-none">

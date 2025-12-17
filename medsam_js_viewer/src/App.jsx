@@ -242,12 +242,33 @@ function App() {
 
       let maskBase64 = null;
       if (currentMaskData) {
-        // Convert ImageData to Base64
         const canvas = document.createElement('canvas');
         canvas.width = currentMaskData.width;
         canvas.height = currentMaskData.height;
         const ctx = canvas.getContext('2d');
-        ctx.putImageData(currentMaskData, 0, 0);
+
+        // Check if data is 1-channel compressed (Uint8Array)
+        if (currentMaskData.data instanceof Uint8Array && !(currentMaskData instanceof ImageData)) {
+          // Reconstruct ImageData from 1-channel
+          const { data, width, height } = currentMaskData;
+          const rgbaData = new Uint8ClampedArray(width * height * 4);
+          for (let i = 0; i < width * height; i++) {
+            const val = data[i];
+            if (val > 0) {
+              const idx = i * 4;
+              rgbaData[idx] = 255;     // R
+              rgbaData[idx + 1] = 255; // G
+              rgbaData[idx + 2] = 255; // B
+              rgbaData[idx + 3] = 255; // A
+            }
+          }
+          const imageData = new ImageData(rgbaData, width, height);
+          ctx.putImageData(imageData, 0, 0);
+        } else {
+          // Legacy/Fallback: ImageData
+          ctx.putImageData(currentMaskData, 0, 0);
+        }
+
         const dataURL = canvas.toDataURL('image/png');
         maskBase64 = dataURL.split(',')[1]; // Remove prefix
       } else {
