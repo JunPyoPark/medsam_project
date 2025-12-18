@@ -195,13 +195,20 @@ const SliceViewer = ({ niftiData, currentSlice, maskOverlay, boundingBox, onSlic
     }, [niftiData, currentSlice, onSliceChange]);
 
     const getCanvasCoords = (e) => {
-        const canvas = uiCanvasRef.current; // Use UI canvas for coords
-        const rect = canvas.getBoundingClientRect();
-        const scaleX = canvas.width / rect.width;
-        const scaleY = canvas.height / rect.height;
+        const canvas = uiCanvasRef.current;
+        // Use nativeEvent.offsetX/Y for more accurate relative coordinates
+        // This avoids issues with getBoundingClientRect including borders/padding in ways that might offset
+        const x = e.nativeEvent.offsetX;
+        const y = e.nativeEvent.offsetY;
+
+        // Scale to internal canvas resolution
+        // clientWidth/Height gives the inner dimension (padding box), which matches where we draw
+        const scaleX = canvas.width / canvas.clientWidth;
+        const scaleY = canvas.height / canvas.clientHeight;
+
         return {
-            x: (e.clientX - rect.left) * scaleX,
-            y: (e.clientY - rect.top) * scaleY
+            x: x * scaleX,
+            y: y * scaleY
         };
     };
 
@@ -243,9 +250,9 @@ const SliceViewer = ({ niftiData, currentSlice, maskOverlay, boundingBox, onSlic
 
         // Direct DOM manipulation for performance
         if (cursorRef.current && uiCanvasRef.current) {
-            const rect = uiCanvasRef.current.getBoundingClientRect();
-            const x = e.clientX - rect.left;
-            const y = e.clientY - rect.top;
+            // Use offsetX/Y directly for visual cursor position
+            const x = e.nativeEvent.offsetX;
+            const y = e.nativeEvent.offsetY;
 
             cursorRef.current.style.transform = `translate(${x}px, ${y}px) translate(-50%, -50%)`;
             cursorRef.current.style.display = 'block';

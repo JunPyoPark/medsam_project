@@ -21,11 +21,11 @@ const Header = () => {
                 </div>
 
                 <button
-                    className="p-2 hover:bg-white/5 rounded-full transition-colors text-slate-400 hover:text-indigo-400"
-                    title="Help"
+                    className="flex items-center gap-2 px-4 py-2 bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/20 hover:border-indigo-500/40 rounded-full transition-all text-indigo-300 hover:text-indigo-200"
                     onClick={() => setIsHelpOpen(true)}
                 >
-                    <HelpCircle className="w-5 h-5" />
+                    <HelpCircle className="w-4 h-4" />
+                    <span className="text-sm font-medium">Quick Guide</span>
                 </button>
             </header>
 
