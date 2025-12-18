@@ -3,6 +3,8 @@
 **MedSAM2** 모델을 활용한 **Human-in-the-Loop (HITL)** 3D 의료영상 분할 웹 애플리케이션입니다. 
 의료 전문가가 AI와 협력하여 3D 의료 영상(CT, MRI 등)에서 병변이나 장기를 효율적으로 분할할 수 있도록 지원합니다.
 
+![Demo](js_demo_gif/06_medsam2_js_case3.gif)
+
 ---
 
 ## 📋 목차

@@ -14,6 +14,8 @@
       - **반응형 레이아웃**: 플로팅 컨트롤 패널이 포함된 전체 화면 뷰어를 제공합니다.
       - **도움말 모달**: 신규 사용자를 위한 퀵 가이드가 내장되어 있습니다.
 
+![Quick Guide](js_demo_gif/01_medsam2_js_guide.gif)
+
 ## 사전 요구 사항
 
   - Node.js (v18 이상)
@@ -51,12 +53,16 @@
 1.  **이미지 업로드**
     - `.nii.gz` 파일을 업로드 영역으로 드래그 앤 드롭합니다.
 
+    ![Upload](js_demo_gif/00_medsam2_js_upload_nifti.gif)
+
 2.  **슬라이스 탐색**
     - 마우스 휠을 사용하여 슬라이스를 스크롤합니다.
 
 3.  **2D 분할 (Segment 2D)**
     - 슬라이스에서 관심 있는 객체 주변에 바운딩 박스를 그립니다.
     - 컨트롤 패널에서 "Segment 2D"를 클릭합니다.
+
+    ![2D Segmentation](js_demo_gif/02_medsam2_js_2D_seg.gif)
 
 4.  **마스크 편집 (Edit Mask)**
     - 브러쉬(Brush)와 지우개(Eraser) 도구를 사용하여 마스크를 수정합니다.
@@ -65,6 +71,16 @@
 5.  **3D 전파 (Propagate 3D)**
     - 전파할 시작(Start) 및 종료(End) 슬라이스 범위를 설정합니다.
     - "Propagate 3D"를 클릭하여 작업을 수행하고 결과를 다운로드합니다.
+
+    ![3D Propagation](js_demo_gif/04_medsam2_js_3D_seg.gif)
+
+## 데모 결과 (Demo Results)
+
+### Case 2
+![Case 2](js_demo_gif/05_medsam2_js_case2.gif)
+
+### Case 3
+![Case 3](js_demo_gif/06_medsam2_js_case3.gif)
 
 ## 기술 스택
 
