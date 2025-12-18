@@ -18,6 +18,7 @@ from PIL import Image, ImageDraw
 
 from fastapi import APIRouter, UploadFile, File, HTTPException, BackgroundTasks
 from fastapi.responses import JSONResponse, FileResponse
+from fastapi.concurrency import run_in_threadpool
 from celery.result import AsyncResult
 
 from medsam_api_server.celery_app import celery_app
@@ -134,7 +135,8 @@ async def create_job(file: UploadFile = File(...)):
         # 파일 검증 (NIfTI 로딩 테스트)
         try:
             processor = MedicalImageProcessor()
-            volume_data, metadata = processor.load_nifti(volume_path)
+            # run_in_threadpool을 사용하여 블로킹 I/O 위임
+            volume_data, metadata = await run_in_threadpool(processor.load_nifti, volume_path)
             logger.info(f"Uploaded volume shape: {volume_data.shape}")
         except Exception as e:
             # 실패시 파일 삭제
@@ -221,7 +223,8 @@ async def generate_initial_mask(job_id: str, request: InitialMaskRequest):
         try:
             debug_img_path = os.path.join(TEMP_ROOT, f"{job_id}_slice_{request.slice_index}_debug.png")
             processor = MedicalImageProcessor()
-            volume_data, _ = processor.load_nifti(volume_path)
+            # run_in_threadpool을 사용하여 블로킹 I/O 위임
+            volume_data, _ = await run_in_threadpool(processor.load_nifti, volume_path)
             
             if 0 <= request.slice_index < volume_data.shape[0]:
                 target_slice = volume_data[request.slice_index]
@@ -232,17 +235,20 @@ async def generate_initial_mask(job_id: str, request: InitialMaskRequest):
                     request.bounding_box.y2,
                 ]
                 
-                _save_debug_image_with_bbox(target_slice, bbox_coords, debug_img_path)
+                # run_in_threadpool을 사용하여 블로킹 이미지 저장 위임
+                await run_in_threadpool(_save_debug_image_with_bbox, target_slice, bbox_coords, debug_img_path)
             else:
                 logger.warning(f"디버그 이미지 저장 안함: 슬라이스 인덱스 {request.slice_index}가 범위를 벗어남 (shape: {volume_data.shape})")
         except Exception as e:
             logger.error(f"디버그 이미지 생성 실패 (job {job_id}): {e}")
         # --- END: Debugging code ---
 
-        # GPU 자원 확인
+        # GPU 자원 확인 (비동기 실행)
         gpu_manager = get_gpu_manager()
-        if not gpu_manager.can_accept_job("initial_mask"):
-            queue_position = gpu_manager.get_queue_position(job_id)
+        can_accept = await run_in_threadpool(gpu_manager.can_accept_job, "initial_mask")
+        
+        if not can_accept:
+            queue_position = await run_in_threadpool(gpu_manager.get_queue_position, job_id)
             raise HTTPException(
                 status_code=503,
                 detail={
@@ -318,10 +324,12 @@ async def propagate_3d_mask(job_id: str, request: PropagationRequest):
                 }
             )
         
-        # GPU 자원 확인
+        # GPU 자원 확인 (비동기 실행)
         gpu_manager = get_gpu_manager()
-        if not gpu_manager.can_accept_job("propagation"):
-            queue_position = gpu_manager.get_queue_position(job_id)
+        can_accept = await run_in_threadpool(gpu_manager.can_accept_job, "propagation")
+        
+        if not can_accept:
+            queue_position = await run_in_threadpool(gpu_manager.get_queue_position, job_id)
             raise HTTPException(
                 status_code=503,
                 detail={
@@ -400,8 +408,9 @@ async def get_job_status(job_id: str):
                 }
             )
         
-        # 메타데이터 로딩
-        metadata = _load_job_metadata(job_id)
+        # 메타데이터 로딩 (비동기 실행)
+        # run_in_threadpool을 사용하여 블로킹 I/O 위임
+        metadata = await run_in_threadpool(_load_job_metadata, job_id)
         if not metadata:
             raise HTTPException(
                 status_code=404,
@@ -458,9 +467,10 @@ async def get_job_status(job_id: str):
                         "task_id": task_id
                     }
         
-        # 큐 위치 확인
+        # 큐 위치 확인 (비동기 실행)
         gpu_manager = get_gpu_manager()
-        queue_position = gpu_manager.get_queue_position(job_id)
+        # run_in_threadpool을 사용하여 블로킹 호출(Lock 대기 포함)을 위임
+        queue_position = await run_in_threadpool(gpu_manager.get_queue_position, job_id)
         
         return JobStatusResponse(
             success=True,
@@ -509,8 +519,9 @@ async def get_job_result(job_id: str):
                 }
             )
         
-        # 메타데이터 로딩
-        metadata = _load_job_metadata(job_id)
+        # 메타데이터 로딩 (비동기 실행)
+        # run_in_threadpool을 사용하여 블로킹 I/O 위임
+        metadata = await run_in_threadpool(_load_job_metadata, job_id)
         logger.info(f"Loaded metadata for job {job_id}: {metadata is not None}")
         if not metadata or not metadata.get("tasks"):
             logger.error(f"No tasks found for job {job_id}. Metadata: {metadata}")

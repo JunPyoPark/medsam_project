@@ -1,9 +1,11 @@
 import os
 import time
+import asyncio
 from datetime import datetime
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.concurrency import run_in_threadpool
 
 from medsam_api_server.api.v1 import jobs, system
 from medsam_api_server.core.gpu_manager import get_gpu_manager
@@ -55,13 +57,14 @@ async def root():
 async def health_check():
     """헬스체크 엔드포인트"""
     try:
-        # GPU 관리자 상태
+        # GPU 관리자 상태 (비동기 실행)
         gpu_manager = get_gpu_manager()
-        system_info = gpu_manager.get_system_info()
+        # run_in_threadpool을 사용하여 블로킹 호출을 스레드 풀로 위임
+        system_info = await run_in_threadpool(gpu_manager.get_system_info)
         
-        # 모델 관리자 상태
+        # 모델 관리자 상태 (비동기 실행)
         model_manager = get_model_manager()
-        model_info = model_manager.get_model_info()
+        model_info = await run_in_threadpool(model_manager.get_model_info)
         
         # 시스템 정보 구성
         system_info_model = SystemInfo(
@@ -111,6 +114,18 @@ async def global_exception_handler(request, exc):
     )
 
 
+async def periodically_cleanup_jobs():
+    """주기적으로 오래된 작업 정리"""
+    while True:
+        try:
+            await asyncio.sleep(3600)  # 1시간마다 실행
+            gpu_manager = get_gpu_manager()
+            await run_in_threadpool(gpu_manager.cleanup_stale_jobs)
+        except Exception as e:
+            print(f"⚠️ Error in periodic cleanup: {e}")
+            await asyncio.sleep(60)  # 에러 발생 시 1분 대기
+
+
 # 서버 시작시 초기화
 @app.on_event("startup")
 async def startup_event():
@@ -125,6 +140,10 @@ async def startup_event():
     model_manager = get_model_manager()
     print(f"✅ Model Manager initialized")
     
+    # 주기적 정리 작업 시작
+    asyncio.create_task(periodically_cleanup_jobs())
+    print("✅ Periodic cleanup task started")
+    
     print("🎯 MedSAM2 GPU Service ready!")
 
 
@@ -136,7 +155,7 @@ async def shutdown_event():
     # 모델 언로딩
     try:
         model_manager = get_model_manager()
-        model_manager.unload_model()
+        await run_in_threadpool(model_manager.unload_model)
         print("✅ Model unloaded")
     except Exception as e:
         print(f"⚠️ Error unloading model: {e}")
