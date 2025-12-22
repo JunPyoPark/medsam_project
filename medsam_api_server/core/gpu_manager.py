@@ -144,16 +144,9 @@ class GPUResourceManager:
     
     def can_accept_job(self, task_type: str, estimated_memory: float = 2000) -> bool:
         """새 작업을 수용할 수 있는지 확인"""
-        with self._lock:
-            # 동시 작업 수 제한
-            if len(self._active_jobs) >= self.max_concurrent_jobs:
-                return False
-            
-            # CPU 모드에서는 작업 수만 확인
-            if self.gpu_count == 0:
-                return True
-            
-            # GPU 상태 확인
+        # 1. GPU 상태 확인 (Lock 없이 수행 - NVML 호출이 느릴 수 있음)
+        # CPU 모드에서는 항상 True
+        if self.gpu_count > 0:
             gpu_status = self.get_gpu_status()
             if not gpu_status or not gpu_status.is_available:
                 return False
@@ -161,6 +154,12 @@ class GPUResourceManager:
             # 메모리 요구사항 확인
             available_memory = gpu_status.memory_total * self.gpu_memory_limit - gpu_status.memory_used
             if estimated_memory > available_memory:
+                return False
+
+        # 2. 동시 작업 수 확인 (Lock 필요 - _active_jobs 접근)
+        with self._lock:
+            # 동시 작업 수 제한
+            if len(self._active_jobs) >= self.max_concurrent_jobs:
                 return False
             
             return True
@@ -227,7 +226,7 @@ class GPUResourceManager:
     def get_system_info(self) -> Dict:
         """시스템 정보 조회"""
         info = {
-            "cpu_percent": psutil.cpu_percent(interval=1),
+            "cpu_percent": psutil.cpu_percent(interval=None),  # Non-blocking call
             "memory": dict(psutil.virtual_memory()._asdict()),
             "active_jobs": len(self._active_jobs),
             "max_concurrent_jobs": self.max_concurrent_jobs,
