@@ -15,14 +15,14 @@ const HelpModal = ({ isOpen, onClose }) => {
                 </button>
 
                 <h2 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
-                    <span className="w-2 h-6 bg-indigo-500 rounded-full"></span>
+                    <span className="w-2 h-6 bg-primary-500 rounded-full"></span>
                     Quick Guide
                 </h2>
 
                 <div className="space-y-4">
                     <div className="flex gap-4 items-start p-3 rounded-lg bg-white/5 border border-white/5">
-                        <div className="p-2 bg-indigo-500/20 rounded-lg shrink-0">
-                            <MousePointer2 className="w-5 h-5 text-indigo-400" />
+                        <div className="p-2 bg-primary-500/20 rounded-lg shrink-0">
+                            <MousePointer2 className="w-5 h-5 text-primary-400" />
                         </div>
                         <div>
                             <h3 className="font-medium text-slate-200">1. Navigation</h3>
@@ -69,8 +69,8 @@ const HelpModal = ({ isOpen, onClose }) => {
                     </div>
 
                     <div className="flex gap-4 items-start p-3 rounded-lg bg-white/5 border border-white/5">
-                        <div className="p-2 bg-violet-500/20 rounded-lg shrink-0">
-                            <Layers className="w-5 h-5 text-violet-400" />
+                        <div className="p-2 bg-primary-500/20 rounded-lg shrink-0">
+                            <Layers className="w-5 h-5 text-primary-400" />
                         </div>
                         <div>
                             <h3 className="font-medium text-slate-200">4. 3D Propagation</h3>

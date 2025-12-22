@@ -384,8 +384,8 @@ function App() {
           {isProcessing && (
             <div className="absolute inset-0 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center z-50 animate-fade-in">
               <div className="glass-panel p-8 flex flex-col items-center gap-4">
-                <Loader2 className="w-10 h-10 text-indigo-500 animate-spin" />
-                <p className="text-lg font-medium text-indigo-200">Processing...</p>
+                <Loader2 className="w-10 h-10 text-primary-500 animate-spin" />
+                <p className="text-lg font-medium text-primary-200">Processing...</p>
               </div>
             </div>
           )}

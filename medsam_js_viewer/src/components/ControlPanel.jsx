@@ -26,7 +26,7 @@ const ControlPanel = ({
         <div className="space-y-6 animate-slide-up">
             {/* 2D Segmentation Card */}
             <div className="glass-panel p-5 space-y-4">
-                <div className="flex items-center gap-2 text-indigo-300 mb-2">
+                <div className="flex items-center gap-2 text-primary-300 mb-2">
                     <BoxSelect className="w-5 h-5" />
                     <h3 className="font-semibold">2D Segmentation</h3>
                 </div>
@@ -43,7 +43,7 @@ const ControlPanel = ({
                             key={tool.id}
                             onClick={() => setEditMode(tool.id)}
                             className={`flex flex-col items-center justify-center py-2 rounded-md transition-all duration-200 ${editMode === tool.id
-                                ? 'bg-indigo-500/20 text-indigo-300 shadow-lg shadow-indigo-500/10 border border-indigo-500/30'
+                                ? 'bg-primary-500/20 text-primary-300 shadow-lg shadow-primary-500/10 border border-primary-500/30'
                                 : 'text-slate-500 hover:text-slate-300 hover:bg-white/5'
                                 }`}
                             title={tool.label}
@@ -67,7 +67,7 @@ const ControlPanel = ({
                             max="50"
                             value={brushSize}
                             onChange={(e) => setBrushSize(parseInt(e.target.value))}
-                            className="w-full h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-indigo-500"
+                            className="w-full h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-primary-500"
                         />
                     </div>
                 )}
@@ -93,7 +93,7 @@ const ControlPanel = ({
 
             {/* 3D Propagation Card */}
             <div className="glass-panel p-5 space-y-4">
-                <div className="flex items-center gap-2 text-violet-300 mb-2">
+                <div className="flex items-center gap-2 text-primary-300 mb-2">
                     <Layers className="w-5 h-5" />
                     <h3 className="font-semibold">3D Propagation</h3>
                 </div>
@@ -134,7 +134,7 @@ const ControlPanel = ({
                 <button
                     onClick={onPropagate3D}
                     disabled={!jobId || isProcessing}
-                    className={`w-full btn-primary bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 flex items-center justify-center gap-2 ${(!jobId || isProcessing) && 'opacity-50 cursor-not-allowed grayscale'}`}
+                    className={`w-full btn-primary bg-gradient-to-r from-primary-600 to-primary-500 hover:from-primary-500 hover:to-primary-400 flex items-center justify-center gap-2 ${(!jobId || isProcessing) && 'opacity-50 cursor-not-allowed grayscale'}`}
                 >
                     <Activity className="w-4 h-4" />
                     Propagate 3D
