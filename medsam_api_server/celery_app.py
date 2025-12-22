@@ -44,7 +44,7 @@ def create_celery_app() -> Celery:
         worker_concurrency=1,  # GPU는 동시 처리 제한
         worker_prefetch_multiplier=1,  # 메모리 사용량 제한
         task_acks_late=True,  # 작업 완료 후 ACK
-        worker_max_tasks_per_child=10,  # 메모리 누수 방지
+        worker_max_tasks_per_child=100,  # 메모리 누수 방지 (모델 로딩 오버헤드 감소를 위해 증가)
         
         # 작업 라우팅
         task_routes={
