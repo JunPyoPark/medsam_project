@@ -75,7 +75,7 @@ MedSAM2는 2D 및 3D 의료 영상을 분할하기 위한 최첨단 파운데이
 - **FastAPI (API 서버)**: 클라이언트의 요청을 즉시 수신하고, 무거운 작업은 Celery 작업 큐에 전달
 - **Celery & Redis (작업 큐)**: 전달받은 작업을 백그라운드에서 순차적으로 처리
 - **Celery Worker (GPU 워커)**: 실제 MedSAM2 모델을 실행하여 분할 작업 수행
-- **클라이언트 (Gradio)**: 작업 ID를 받아 주기적으로 서버에 진행 상태를 폴링하고, 완료 시 결과 표시
+- **클라이언트 (React JS)**: 사용자 친화적인 인터페이스로 이미지 시각화 및 분할 조작 (Gradio는 레거시 지원)
 
 ---
 
@@ -92,7 +92,7 @@ graph TD
 
     subgraph Client [Client Layer]
         User([User])
-        UI[Gradio / React UI]:::frontend
+        UI[React JS UI]:::frontend
     end
 
     subgraph Docker [Docker Container Network]
@@ -135,9 +135,14 @@ graph TD
 
 ### 컴포넌트 설명
 
-#### 프론트엔드 (Gradio)
+#### 프론트엔드 (React JS)
+- **파일**: `medsam_js_viewer/`
+- **역할**: 사용자 인터페이스, 이미지 표시, 사용자 입력 처리, 3D 시각화
+- **기술**: React, Vite, TailwindCSS, Nifti-reader-js
+
+#### (Legacy) 프론트엔드 (Gradio)
 - **파일**: `medsam_gradio_viewer/app.py`
-- **역할**: 사용자 인터페이스, 이미지 표시, 사용자 입력 처리
+- **역할**: 초기 프로토타입 UI (현재는 JS 버전 권장)
 - **기술**: Gradio 4.44.1, NumPy, Nibabel
 
 #### 백엔드 (FastAPI)
@@ -201,12 +206,13 @@ mkdir -p data temp models
 # 5. Docker Compose 빌드 및 실행
 docker compose up --build -d
 
-# 6. Gradio 실행 (별도 터미널)
-python3.12 -m venv .venv
-source .venv/bin/activate
-pip install -r medsam_gradio_viewer/requirements.txt
-python medsam_gradio_viewer/app.py
+# 6. JS 프론트엔드 실행 (별도 터미널)
+cd medsam_js_viewer
+npm install
+npm run dev
 ```
+
+> **참고**: Gradio(레거시)를 사용하려면 `python medsam_gradio_viewer/app.py`를 실행하세요.
 
 > **참고**: 프로덕션 모드에서 MedSAM2는 빌드 시점에 이미지에 포함되므로, 
 > 빌드 후에는 로컬의 MedSAM2 폴더를 삭제해도 됩니다.
@@ -230,6 +236,9 @@ cd MedSAM2 && pip install -e . && cd ..
 
 # 4. 서비스 시작
 ./scripts/start.sh
+
+# 5. JS 프론트엔드 시작
+./scripts/start_js_frontend.sh
 ```
 
 ### 2. 서비스 시작 (이미 설치된 경우)
@@ -260,14 +269,15 @@ source .venv/bin/activate
 pip install --upgrade pip
 pip install -r medsam_gradio_viewer/requirements.txt
 
-# (매 실행 시) 빠른 시작
+# (매 실행 시) 빠른 시작 (백엔드 + JS 프론트엔드)
 ./scripts/quick_start.sh
 ```
 
 > `python3.12 -m venv` 실행 시 `ensurepip` 오류가 발생하면 `sudo apt install python3.12-venv` 를 설치한 뒤 다시 시도하세요.
 
 ### 3. 웹 접속
-- **Gradio UI** (사용자 인터페이스): http://127.0.0.1:7860
+- **React JS UI** (메인 인터페이스): http://127.0.0.1:5173
+- **Gradio UI** (레거시): http://127.0.0.1:7860
 - **API 서버** (루트): http://127.0.0.1:8000
 - **API 문서** (Swagger UI): http://127.0.0.1:8000/docs
 - **API 문서** (ReDoc): http://127.0.0.1:8000/redoc
@@ -277,18 +287,17 @@ pip install -r medsam_gradio_viewer/requirements.txt
 ### 4. 기본 사용 흐름
 
 #### Step 1: NIfTI 파일 업로드
-1. 브라우저에서 http://127.0.0.1:7860 접속
-2. "NIfTI (.nii.gz) 업로드"에서 파일 선택
-3. "새 작업 시작" 버튼 클릭
+1. 브라우저에서 http://127.0.0.1:5173 접속
+2. 드래그 앤 드롭으로 `.nii.gz` 파일 업로드
 
 #### Step 2: 2D 분할
 1. 슬라이더로 원하는 슬라이스로 이동
 2. x1, y1, x2, y2 좌표 입력 (예: 200, 265, 240, 310)
-3. "현재 슬라이스 2D 분할" 버튼 클릭
-4. 자동으로 완료까지 대기 (빨간색 마스크 표시)
+3. "Segment 2D" 버튼 클릭
+4. 실시간으로 마스크 생성 확인
 
 #### Step 3: 3D Propagation
-1. "3D Propagation 실행" 버튼 클릭
+1. "Propagate 3D" 버튼 클릭
 2. 진행률 바로 처리 상황 확인
 3. 완료 시 다운로드 링크 활성화
 4. 3D 마스크 다운로드 (.nii.gz)
@@ -330,23 +339,21 @@ pip install -r medsam_gradio_viewer/requirements.txt
 - [ ] 빌드 완료 대기 (에러 없이 완료되어야 함)
 - [ ] 컨테이너 상태 확인: `docker compose ps` (모두 "Up" 상태)
 
-#### Gradio 프론트엔드 실행
-- [ ] 새 터미널 열기
-- [ ] 가상환경 생성: `python3.12 -m venv .venv`
-- [ ] 가상환경 활성화: `source .venv/bin/activate`
-- [ ] 의존성 설치: `pip install -r medsam_gradio_viewer/requirements.txt`
-- [ ] Gradio 실행: `python medsam_gradio_viewer/app.py`
+#### JS 프론트엔드 실행
+- [ ] Node.js (v18+) 설치 확인: `node -v`
+- [ ] 의존성 설치: `cd medsam_js_viewer && npm install`
+- [ ] 실행: `npm run dev`
 
 #### 설치 확인
 - [ ] API 서버: `curl http://localhost:8000/health`
 - [ ] Redis: `docker compose exec api redis-cli -h redis ping`
 - [ ] GPU (GPU 사용 시): `docker compose exec worker nvidia-smi`
 - [ ] MedSAM2 모듈: `docker compose exec worker python -c "import sam2"`
-- [ ] Gradio UI: 브라우저에서 `http://서버IP:7860` 접속
+- [ ] React UI: 브라우저에서 `http://서버IP:5173` 접속
 - [ ] Flower: 브라우저에서 `http://서버IP:5556` 접속
 
 #### 방화벽 설정 (외부 접속 필요 시)
-- [ ] 포트 오픈: `sudo ufw allow 7860,8000,5556/tcp`
+- [ ] 포트 오픈: `sudo ufw allow 5173,8000,5556/tcp`
 
 **모든 체크 완료 시 설치 성공! 🎉**
 
