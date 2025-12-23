@@ -59,6 +59,11 @@ class GPUResourceManager:
         self._lock = RLock()
         self._active_jobs: Dict[str, JobInfo] = {}
         
+        # 캐싱을 위한 변수
+        self._gpu_status_cache: Dict[int, tuple[float, GPUStatus]] = {}  # {gpu_id: (timestamp, status)}
+        self._queue_length_cache: tuple[float, int] = (0.0, 0)  # (timestamp, length)
+        self._cache_ttl = 2.0  # 캐시 유효 시간 (초)
+        
         # GPU 초기화
         if GPU_AVAILABLE:
             try:
@@ -88,6 +93,13 @@ class GPUResourceManager:
                 )
             return None
             
+        # 캐시 확인
+        current_time = time.time()
+        if gpu_id in self._gpu_status_cache:
+            timestamp, cached_status = self._gpu_status_cache[gpu_id]
+            if current_time - timestamp < self._cache_ttl:
+                return cached_status
+
         try:
             handle = pynvml.nvmlDeviceGetHandleByIndex(gpu_id)
             
@@ -117,7 +129,7 @@ class GPUResourceManager:
                 temperature < 85  # 온도 제한
             )
             
-            return GPUStatus(
+            status = GPUStatus(
                 gpu_id=gpu_id,
                 memory_used=memory_used,
                 memory_total=memory_total,
@@ -126,6 +138,10 @@ class GPUResourceManager:
                 utilization=utilization,
                 is_available=is_available
             )
+            
+            # 캐시 업데이트
+            self._gpu_status_cache[gpu_id] = (current_time, status)
+            return status
             
         except Exception as e:
             logger.warning(
@@ -166,16 +182,25 @@ class GPUResourceManager:
             # 3. 큐 대기열 확인 (Celery Inspection)
             # 실제 워커가 바쁜지 확인하기 위해 큐 깊이를 체크
             try:
-                # Redis 브로커에서 직접 큐 길이 확인 (더 빠름)
-                with celery_app.connection_or_acquire() as conn:
-                    # 'gpu_tasks' 큐의 길이 확인
-                    queue_length = conn.default_channel.client.llen("gpu_tasks")
-                    
-                    # 대기열이 너무 길면 거부 (워커 수의 2배 이상 대기 중이면 Busy로 판단)
-                    # 워커 8개 * 2 = 16개
-                    if queue_length > (self.max_concurrent_jobs * 2):
-                        logger.warning(f"System busy: {queue_length} tasks in queue")
-                        return False
+                # 캐시 확인
+                current_time = time.time()
+                timestamp, cached_length = self._queue_length_cache
+                
+                if current_time - timestamp < self._cache_ttl:
+                    queue_length = cached_length
+                else:
+                    # Redis 브로커에서 직접 큐 길이 확인 (더 빠름)
+                    with celery_app.connection_or_acquire() as conn:
+                        # 'gpu_tasks' 큐의 길이 확인
+                        queue_length = conn.default_channel.client.llen("gpu_tasks")
+                        # 캐시 업데이트
+                        self._queue_length_cache = (current_time, queue_length)
+                
+                # 대기열이 너무 길면 거부 (워커 수의 2배 이상 대기 중이면 Busy로 판단)
+                # 워커 8개 * 2 = 16개
+                if queue_length > (self.max_concurrent_jobs * 2):
+                    logger.warning(f"System busy: {queue_length} tasks in queue")
+                    return False
             except Exception as e:
                 logger.warning(f"Failed to check queue length: {e}")
                 # 큐 확인 실패 시에는 일단 허용 (보수적 접근)
@@ -219,12 +244,22 @@ class GPUResourceManager:
     def get_queue_position(self, job_id: str) -> Optional[int]:
         """큐에서의 위치 반환 (0부터 시작, None이면 큐에 없음)"""
         try:
+            # 캐시 확인
+            current_time = time.time()
+            timestamp, cached_length = self._queue_length_cache
+            
+            if current_time - timestamp < self._cache_ttl:
+                return cached_length
+                
             with celery_app.connection_or_acquire() as conn:
                 # Redis 리스트에서 job_id가 포함된 태스크 찾기 (비효율적일 수 있으나 정확함)
                 # 실제로는 Celery가 태스크 ID로 관리하므로 job_id로 직접 찾기는 어려움
                 # 여기서는 단순히 큐 길이만 반환하거나, 예상 대기 시간을 반환하는 것이 현실적
                 
                 queue_length = conn.default_channel.client.llen("gpu_tasks")
+                
+                # 캐시 업데이트
+                self._queue_length_cache = (current_time, queue_length)
                 return queue_length
         except Exception as e:
             logger.error(f"Failed to get queue position: {e}")
