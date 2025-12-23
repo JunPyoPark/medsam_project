@@ -47,6 +47,8 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+    labels:
+      - "autoheal=true"
     restart: unless-stopped
 
   worker1:
@@ -80,6 +82,14 @@ services:
       redis:
         condition: service_healthy
     command: celery -A medsam_api_server.celery_app:celery_app worker --loglevel=info --pool=threads --concurrency=1
+    healthcheck:
+      test: ["CMD", "celery", "-A", "medsam_api_server.celery_app:celery_app", "inspect", "ping", "-d", "celery@medsam2_worker1"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    labels:
+      - "autoheal=true"
     restart: unless-stopped
 
   worker2:
@@ -113,6 +123,14 @@ services:
       redis:
         condition: service_healthy
     command: celery -A medsam_api_server.celery_app:celery_app worker --loglevel=info --pool=threads --concurrency=1
+    healthcheck:
+      test: ["CMD", "celery", "-A", "medsam_api_server.celery_app:celery_app", "inspect", "ping", "-d", "celery@medsam2_worker2"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    labels:
+      - "autoheal=true"
     restart: unless-stopped
 
   worker3:
@@ -146,6 +164,14 @@ services:
       redis:
         condition: service_healthy
     command: celery -A medsam_api_server.celery_app:celery_app worker --loglevel=info --pool=threads --concurrency=1
+    healthcheck:
+      test: ["CMD", "celery", "-A", "medsam_api_server.celery_app:celery_app", "inspect", "ping", "-d", "celery@medsam2_worker3"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    labels:
+      - "autoheal=true"
     restart: unless-stopped
 
   worker4:
@@ -179,6 +205,14 @@ services:
       redis:
         condition: service_healthy
     command: celery -A medsam_api_server.celery_app:celery_app worker --loglevel=info --pool=threads --concurrency=1
+    healthcheck:
+      test: ["CMD", "celery", "-A", "medsam_api_server.celery_app:celery_app", "inspect", "ping", "-d", "celery@medsam2_worker4"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    labels:
+      - "autoheal=true"
     restart: unless-stopped
 
   worker5:
@@ -212,6 +246,14 @@ services:
       redis:
         condition: service_healthy
     command: celery -A medsam_api_server.celery_app:celery_app worker --loglevel=info --pool=threads --concurrency=1
+    healthcheck:
+      test: ["CMD", "celery", "-A", "medsam_api_server.celery_app:celery_app", "inspect", "ping", "-d", "celery@medsam2_worker5"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    labels:
+      - "autoheal=true"
     restart: unless-stopped
 
   worker6:
@@ -245,6 +287,14 @@ services:
       redis:
         condition: service_healthy
     command: celery -A medsam_api_server.celery_app:celery_app worker --loglevel=info --pool=threads --concurrency=1
+    healthcheck:
+      test: ["CMD", "celery", "-A", "medsam_api_server.celery_app:celery_app", "inspect", "ping", "-d", "celery@medsam2_worker6"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    labels:
+      - "autoheal=true"
     restart: unless-stopped
 
   worker7:
@@ -278,6 +328,14 @@ services:
       redis:
         condition: service_healthy
     command: celery -A medsam_api_server.celery_app:celery_app worker --loglevel=info --pool=threads --concurrency=1
+    healthcheck:
+      test: ["CMD", "celery", "-A", "medsam_api_server.celery_app:celery_app", "inspect", "ping", "-d", "celery@medsam2_worker7"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    labels:
+      - "autoheal=true"
     restart: unless-stopped
 
   worker8:
@@ -311,6 +369,14 @@ services:
       redis:
         condition: service_healthy
     command: celery -A medsam_api_server.celery_app:celery_app worker --loglevel=info --pool=threads --concurrency=1
+    healthcheck:
+      test: ["CMD", "celery", "-A", "medsam_api_server.celery_app:celery_app", "inspect", "ping", "-d", "celery@medsam2_worker8"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    labels:
+      - "autoheal=true"
     restart: unless-stopped
 
   monitor:
@@ -332,6 +398,15 @@ services:
         condition: service_healthy
     command: celery -A medsam_api_server.celery_app:celery_app flower --port=5555
     restart: unless-stopped
+
+  autoheal:
+    image: willfarrell/autoheal
+    container_name: medsam2_autoheal
+    environment:
+      - AUTOHEAL_CONTAINER_LABEL=all
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    restart: always
 
 volumes:
   redis_data:
