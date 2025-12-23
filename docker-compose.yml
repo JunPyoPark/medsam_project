@@ -56,6 +56,7 @@ services:
       context: .
       dockerfile: medsam_api_server/Dockerfile
     container_name: medsam2_worker1
+    hostname: medsam2_worker1
     shm_size: '16gb'
     volumes:
       - ./data:/app/data
@@ -85,9 +86,9 @@ services:
     healthcheck:
       test: ["CMD", "celery", "-A", "medsam_api_server.celery_app:celery_app", "inspect", "ping", "-d", "celery@medsam2_worker1"]
       interval: 60s
-      timeout: 10s
+      timeout: 30s
       retries: 3
-      start_period: 30s
+      start_period: 60s
     labels:
       - "autoheal=true"
     restart: unless-stopped
@@ -97,6 +98,7 @@ services:
       context: .
       dockerfile: medsam_api_server/Dockerfile
     container_name: medsam2_worker2
+    hostname: medsam2_worker2
     shm_size: '16gb'
     volumes:
       - ./data:/app/data
@@ -126,9 +128,9 @@ services:
     healthcheck:
       test: ["CMD", "celery", "-A", "medsam_api_server.celery_app:celery_app", "inspect", "ping", "-d", "celery@medsam2_worker2"]
       interval: 60s
-      timeout: 10s
+      timeout: 30s
       retries: 3
-      start_period: 30s
+      start_period: 60s
     labels:
       - "autoheal=true"
     restart: unless-stopped
@@ -138,6 +140,7 @@ services:
       context: .
       dockerfile: medsam_api_server/Dockerfile
     container_name: medsam2_worker3
+    hostname: medsam2_worker3
     shm_size: '16gb'
     volumes:
       - ./data:/app/data
@@ -167,9 +170,9 @@ services:
     healthcheck:
       test: ["CMD", "celery", "-A", "medsam_api_server.celery_app:celery_app", "inspect", "ping", "-d", "celery@medsam2_worker3"]
       interval: 60s
-      timeout: 10s
+      timeout: 30s
       retries: 3
-      start_period: 30s
+      start_period: 60s
     labels:
       - "autoheal=true"
     restart: unless-stopped
@@ -179,6 +182,7 @@ services:
       context: .
       dockerfile: medsam_api_server/Dockerfile
     container_name: medsam2_worker4
+    hostname: medsam2_worker4
     shm_size: '16gb'
     volumes:
       - ./data:/app/data
@@ -208,9 +212,9 @@ services:
     healthcheck:
       test: ["CMD", "celery", "-A", "medsam_api_server.celery_app:celery_app", "inspect", "ping", "-d", "celery@medsam2_worker4"]
       interval: 60s
-      timeout: 10s
+      timeout: 30s
       retries: 3
-      start_period: 30s
+      start_period: 60s
     labels:
       - "autoheal=true"
     restart: unless-stopped
@@ -220,6 +224,7 @@ services:
       context: .
       dockerfile: medsam_api_server/Dockerfile
     container_name: medsam2_worker5
+    hostname: medsam2_worker5
     shm_size: '16gb'
     volumes:
       - ./data:/app/data
@@ -249,9 +254,9 @@ services:
     healthcheck:
       test: ["CMD", "celery", "-A", "medsam_api_server.celery_app:celery_app", "inspect", "ping", "-d", "celery@medsam2_worker5"]
       interval: 60s
-      timeout: 10s
+      timeout: 30s
       retries: 3
-      start_period: 30s
+      start_period: 60s
     labels:
       - "autoheal=true"
     restart: unless-stopped
@@ -261,6 +266,7 @@ services:
       context: .
       dockerfile: medsam_api_server/Dockerfile
     container_name: medsam2_worker6
+    hostname: medsam2_worker6
     shm_size: '16gb'
     volumes:
       - ./data:/app/data
@@ -290,9 +296,9 @@ services:
     healthcheck:
       test: ["CMD", "celery", "-A", "medsam_api_server.celery_app:celery_app", "inspect", "ping", "-d", "celery@medsam2_worker6"]
       interval: 60s
-      timeout: 10s
+      timeout: 30s
       retries: 3
-      start_period: 30s
+      start_period: 60s
     labels:
       - "autoheal=true"
     restart: unless-stopped
@@ -302,6 +308,7 @@ services:
       context: .
       dockerfile: medsam_api_server/Dockerfile
     container_name: medsam2_worker7
+    hostname: medsam2_worker7
     shm_size: '16gb'
     volumes:
       - ./data:/app/data
@@ -331,9 +338,9 @@ services:
     healthcheck:
       test: ["CMD", "celery", "-A", "medsam_api_server.celery_app:celery_app", "inspect", "ping", "-d", "celery@medsam2_worker7"]
       interval: 60s
-      timeout: 10s
+      timeout: 30s
       retries: 3
-      start_period: 30s
+      start_period: 60s
     labels:
       - "autoheal=true"
     restart: unless-stopped
@@ -343,6 +350,7 @@ services:
       context: .
       dockerfile: medsam_api_server/Dockerfile
     container_name: medsam2_worker8
+    hostname: medsam2_worker8
     shm_size: '16gb'
     volumes:
       - ./data:/app/data
@@ -372,9 +380,9 @@ services:
     healthcheck:
       test: ["CMD", "celery", "-A", "medsam_api_server.celery_app:celery_app", "inspect", "ping", "-d", "celery@medsam2_worker8"]
       interval: 60s
-      timeout: 10s
+      timeout: 30s
       retries: 3
-      start_period: 30s
+      start_period: 60s
     labels:
       - "autoheal=true"
     restart: unless-stopped
@@ -397,6 +405,14 @@ services:
       redis:
         condition: service_healthy
     command: celery -A medsam_api_server.celery_app:celery_app flower --port=5555
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5555/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    labels:
+      - "autoheal=true"
     restart: unless-stopped
 
   autoheal:

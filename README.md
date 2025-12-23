@@ -47,6 +47,10 @@
 - **입력**: 2D 분할 결과를 기반으로
 - **처리**: 중간 슬라이스에서 양방향으로 3D 전파
 - **결과**: 전체 3D 마스크 생성 및 다운로드
+4. **시스템 안정성 및 자동 복구 (Auto-Recovery)**
+- **Healthchecks**: 모든 워커와 서비스에 대한 실시간 상태 모니터링
+- **Autoheal**: 응답 없는 서비스 자동 감지 및 재시작
+- **부하 제어**: 큐 기반 부하 분산으로 서버 다운 방지
 
 ---
 
@@ -117,6 +121,11 @@ MedSAM2는 2D 및 3D 의료 영상을 분할하기 위한 최첨단 파운데이
 - **파일**: `medsam_api_server/core/gpu_manager.py`, `medsam_api_server/core/model_manager.py`
 - **역할**: GPU 메모리 관리, MedSAM2 모델 로딩 및 추론
 - **기술**: PyTorch, CUDA
+
+#### 자동 복구 (Autoheal)
+- **파일**: `docker-compose.yml` (autoheal 서비스)
+- **역할**: 비정상 컨테이너(Unhealthy) 자동 재시작
+- **기술**: Docker Healthcheck, Willfarrell/Autoheal
 
 ---
 
