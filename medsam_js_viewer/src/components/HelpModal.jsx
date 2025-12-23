@@ -73,7 +73,7 @@ const HelpModal = ({ isOpen, onClose }) => {
                             <Layers className="w-5 h-5 text-primary-400" />
                         </div>
                         <div>
-                            <h3 className="font-medium text-slate-200">4. 3D Propagation</h3>
+                            <h3 className="font-medium text-slate-200">5. 3D Propagation</h3>
                             <p className="text-sm text-slate-400 mt-1">
                                 Set the start/end slices and click "Propagate 3D" to process the full volume.
                             </p>
