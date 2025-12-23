@@ -81,23 +81,56 @@ MedSAM2는 2D 및 3D 의료 영상을 분할하기 위한 최첨단 파운데이
 
 ## 🏗️ 시스템 아키텍처
 
-```
-┌─────────────────┐    HTTP API    ┌─────────────────┐
-│   Gradio UI     │◄──────────────►│   FastAPI       │
-│   (Frontend)    │                │   (Backend)     │
-└─────────────────┘                └─────────────────┘
-                                           │
-                                           ▼
-                                   ┌─────────────────┐
-                                   │   Celery Queue  │
-                                   │   (Redis)       │
-                                   └─────────────────┘
-                                           │
-                                           ▼
-                                   ┌─────────────────┐
-                                   │   Celery Worker │
-                                   │  (AI Processing)│
-                                   └─────────────────┘
+```mermaid
+graph TD
+    %% Styles
+    classDef frontend fill:#e3f2fd,stroke:#1565c0,stroke-width:2px,color:#0d47a1
+    classDef backend fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px,color:#1b5e20
+    classDef worker fill:#fff3e0,stroke:#ef6c00,stroke-width:2px,color:#e65100
+    classDef infra fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px,color:#4a148c
+    classDef recovery fill:#ffebee,stroke:#c62828,stroke-width:2px,stroke-dasharray: 5 5,color:#b71c1c
+
+    subgraph Client [Client Layer]
+        User([User])
+        UI[Gradio / React UI]:::frontend
+    end
+
+    subgraph Docker [Docker Container Network]
+        
+        subgraph ServiceLayer [Backend Services]
+            API[FastAPI Server]:::backend
+            Monitor[Flower Monitor]:::backend
+        end
+
+        subgraph DataLayer [Data & Messaging]
+            Redis[(Redis Queue)]:::infra
+        end
+        
+        subgraph ComputeLayer [Compute Layer]
+            Worker[GPU Workers]:::worker
+        end
+
+        subgraph RecoveryLayer [Auto-Recovery System]
+            Autoheal[Autoheal Service]:::recovery
+        end
+    end
+
+    %% Application Flow
+    User -->|Interacts| UI
+    UI <-->|HTTP / WebSocket| API
+    API -->|Enqueue Task| Redis
+    Redis <-->|Fetch Task / Save Result| Worker
+    
+    %% Monitoring Flow
+    Monitor -.->|Inspect| Redis
+    Monitor -.->|Inspect| Worker
+
+    %% Auto-Recovery Flow
+    Autoheal -.->|Watch Healthcheck| API
+    Autoheal -.->|Watch Healthcheck| Redis
+    Autoheal -.->|Watch Healthcheck| Worker
+    Autoheal == Restart Unhealthy ==> API
+    Autoheal == Restart Unhealthy ==> Worker
 ```
 
 ### 컴포넌트 설명
