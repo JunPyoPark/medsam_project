@@ -9,7 +9,7 @@ import { createJob, triggerSegmentation, getJobStatus, getJobResult, triggerProp
 import { Loader2 } from 'lucide-react';
 import * as nifti from 'nifti-reader-js';
 
-const API_BASE = 'http://127.0.0.1:8000'; // Should match api.js
+const API_BASE = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000';
 
 function App() {
   const [niftiData, setNiftiData] = useState(null);

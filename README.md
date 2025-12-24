@@ -209,6 +209,7 @@ docker compose up --build -d
 # 6. JS 프론트엔드 실행 (별도 터미널)
 cd medsam_js_viewer
 npm install
+# (선택) API 주소 변경 필요 시: cp .env.example .env 후 수정
 npm run dev
 ```
 

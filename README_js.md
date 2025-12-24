@@ -50,7 +50,16 @@
     npm run dev
     ```
 
-3.  **앱 접속**:
+3.  **환경 설정 (선택 사항)**:
+    API 서버가 로컬이 아닌 다른 곳에 있거나 포트가 다른 경우, `.env` 파일을 생성하여 설정할 수 있습니다.
+
+    ```bash
+    cd medsam_js_viewer
+    cp .env.example .env
+    # .env 파일 수정: VITE_API_URL=http://YOUR_SERVER_IP:8000
+    ```
+
+4.  **앱 접속**:
     브라우저를 열고 `http://localhost:5173`으로 이동합니다.
 
 ## 사용법
