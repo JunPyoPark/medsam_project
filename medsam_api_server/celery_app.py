@@ -28,8 +28,8 @@ def create_celery_app() -> Celery:
         result_serializer="json",
         
         # 시간대 설정
-        timezone="UTC",
-        enable_utc=True,
+        timezone="Asia/Seoul",
+        enable_utc=False,
         
         # 작업 추적 설정
         task_track_started=True,

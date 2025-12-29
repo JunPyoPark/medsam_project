@@ -22,6 +22,7 @@ RUN apt-get update && apt-get install -y \
     curl \
     build-essential \
     ninja-build \
+    tzdata \
     && rm -rf /var/lib/apt/lists/*
 
 # Python 기본 설정
