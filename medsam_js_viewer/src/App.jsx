@@ -109,15 +109,26 @@ function App() {
   };
 
   const pollJobStatus = async (jid, onComplete, onError) => {
+    const startTime = Date.now();
+    const TIMEOUT_MS = 300000; // 5 minutes timeout
+
     const poll = async () => {
       try {
+        // Check for client-side timeout
+        if (Date.now() - startTime > TIMEOUT_MS) {
+          throw new Error("Polling timed out (5 minutes limit)");
+        }
+
         const statusData = await getJobStatus(jid);
+
         if (statusData.status === 'completed') {
           onComplete(statusData);
           return;
         } else if (statusData.status === 'failed') {
           console.error("Job Failed:", statusData);
-          if (onError) onError(statusData.error_details || "Unknown error");
+          const errorMsg = statusData.error_details?.error || "Unknown error";
+          if (onError) onError(errorMsg);
+          addLog(`Job failed: ${errorMsg}`);
           setIsProcessing(false);
           return;
         }
@@ -129,7 +140,17 @@ function App() {
         setTimeout(poll, 2000);
       } catch (err) {
         console.error("Polling Error:", err);
-        addLog(`Polling error: ${err.message || JSON.stringify(err)}`);
+
+        // Handle 503 Service Unavailable (Server Busy) specifically
+        if (err.response && err.response.status === 503) {
+          addLog(`Server busy (Queue pos: ${err.response.data?.detail?.queue_position || '?'}). Retrying...`);
+          setTimeout(poll, 5000); // Wait longer for retry
+          return;
+        }
+
+        const errorMsg = err.response?.data?.detail?.message || err.message || "Network Error";
+        addLog(`Error: ${errorMsg}`);
+        if (onError) onError(errorMsg);
         setIsProcessing(false);
       }
     };
