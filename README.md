@@ -99,7 +99,7 @@ graph TD
         
         subgraph ServiceLayer [Backend Services]
             Nginx[Nginx Load Balancer]:::backend
-            API[FastAPI Server (x5)]:::backend
+            API["FastAPI Server (x5)"]:::backend
             Monitor[Flower Monitor]:::backend
         end
 
@@ -108,7 +108,7 @@ graph TD
         end
         
         subgraph ComputeLayer [Compute Layer]
-            Worker[GPU Workers (x8)]:::worker
+            Worker["GPU Workers (x8)"]:::worker
         end
 
         subgraph RecoveryLayer [Auto-Recovery System]
