@@ -98,7 +98,8 @@ graph TD
     subgraph Docker [Docker Container Network]
         
         subgraph ServiceLayer [Backend Services]
-            API[FastAPI Server]:::backend
+            Nginx[Nginx Load Balancer]:::backend
+            API[FastAPI Server (x5)]:::backend
             Monitor[Flower Monitor]:::backend
         end
 
@@ -107,7 +108,7 @@ graph TD
         end
         
         subgraph ComputeLayer [Compute Layer]
-            Worker[GPU Workers]:::worker
+            Worker[GPU Workers (x8)]:::worker
         end
 
         subgraph RecoveryLayer [Auto-Recovery System]
@@ -117,7 +118,8 @@ graph TD
 
     %% Application Flow
     User -->|Interacts| UI
-    UI <-->|HTTP / WebSocket| API
+    UI <-->|HTTP / WebSocket| Nginx
+    Nginx <-->|Load Balance| API
     API -->|Enqueue Task| Redis
     Redis <-->|Fetch Task / Save Result| Worker
     
@@ -126,6 +128,7 @@ graph TD
     Monitor -.->|Inspect| Worker
 
     %% Auto-Recovery Flow
+    Autoheal -.->|Watch Healthcheck| Nginx
     Autoheal -.->|Watch Healthcheck| API
     Autoheal -.->|Watch Healthcheck| Redis
     Autoheal -.->|Watch Healthcheck| Worker
@@ -148,7 +151,8 @@ graph TD
 #### 백엔드 (FastAPI)
 - **파일**: `medsam_api_server/main.py`, `medsam_api_server/api/v1/jobs.py`
 - **역할**: API 서버, 파일 업로드, 작업 관리
-- **기술**: FastAPI, Uvicorn
+- **기술**: FastAPI, Uvicorn, Nginx (Load Balancer)
+- **구성**: 5개의 API 컨테이너가 Nginx를 통해 로드밸런싱됨
 
 #### 작업 큐 (Celery + Redis)
 - **파일**: `medsam_api_server/celery_app.py`, `medsam_api_server/tasks/segmentation.py`
@@ -346,7 +350,7 @@ pip install -r medsam_gradio_viewer/requirements.txt
 - [ ] 실행: `npm run dev`
 
 #### 설치 확인
-- [ ] API 서버: `curl http://localhost:8000/health`
+- [ ] API 서버: `curl http://localhost:8000/health` (Nginx -> API 로드밸런싱 확인)
 - [ ] Redis: `docker compose exec api redis-cli -h redis ping`
 - [ ] GPU (GPU 사용 시): `docker compose exec worker nvidia-smi`
 - [ ] MedSAM2 모듈: `docker compose exec worker python -c "import sam2"`
@@ -536,8 +540,9 @@ docker compose logs -f
 
 **Docker Compose 서비스 구성:**
 - **redis**: Redis 메시지 브로커 (포트 6380:6379, 호스트:컨테이너)
-- **api**: FastAPI 서버 (포트 8000:8000, GPU 지원)
-- **worker**: Celery Worker (GPU 처리, concurrency=2, 동시 2개 작업 처리)
+- **nginx**: 로드 밸런서 (포트 8000:8000)
+- **api**: FastAPI 서버 (5개 레플리카, 내부 통신만 수행)
+- **worker**: Celery Worker (GPU 처리, 8개 워커)
 - **monitor**: Flower 모니터링 대시보드 (포트 5556:5555)
 
 > **중요 - 프로덕션 모드 vs 개발 모드**:
@@ -603,17 +608,6 @@ sudo ufw allow from 192.168.1.0/24 to any port 7860
 
 **예시: GPU 6번, 7번만 사용**
 ```yaml
-api:
-  environment:
-    # ... 기존 설정 ...
-  deploy:
-    resources:
-      reservations:
-        devices:
-          - driver: nvidia
-            device_ids: ['6']  # API 서버는 GPU 6번 사용
-            capabilities: [gpu]
-
 worker:
   environment:
     # ... 기존 설정 ...
@@ -639,7 +633,7 @@ deploy:
 
 **GPU 할당 확인**
 ```bash
-# API 컨테이너 GPU 확인
+# API 컨테이너 GPU 확인 (5개 중 하나에서 실행됨)
 docker compose exec api nvidia-smi --query-gpu=index,name,pci.bus_id --format=csv
 
 # Worker 컨테이너 GPU 확인
