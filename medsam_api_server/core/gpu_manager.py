@@ -198,7 +198,7 @@ class GPUResourceManager:
                 
                 # 대기열이 너무 길면 거부 (워커 수의 2배 이상 대기 중이면 Busy로 판단)
                 # 워커 8개 * 2 = 16개
-                if queue_length > (self.max_concurrent_jobs * 2):
+                if queue_length > (self.max_concurrent_jobs * 4):
                     logger.warning(f"System busy: {queue_length} tasks in queue")
                     return False
             except Exception as e:

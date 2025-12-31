@@ -62,8 +62,8 @@ def create_celery_app() -> Celery:
         task_max_retries=3,
         
         # 타임아웃 설정
-        task_soft_time_limit=1800,  # 30분 소프트 타임아웃
-        task_time_limit=2400,  # 40분 하드 타임아웃
+        task_soft_time_limit=60,  # 1분 소프트 타임아웃 (무한 로딩 방지)
+        task_time_limit=120,  # 2분 하드 타임아웃
         
         # 로그 설정
         worker_log_format="[%(asctime)s: %(levelname)s/%(processName)s] %(message)s",
