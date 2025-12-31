@@ -26,6 +26,7 @@ services:
       # 개발 모드: 로컬 코드 수정 시 즉시 반영 (hot reload)
       - ./MedSAM2:/app/MedSAM2
       - ./medsam_api_server:/app/medsam_api_server
+      - ./medsam_api_server/start_server.sh:/app/start_server.sh
       
       # 프로덕션 모드: 데이터와 모델만 마운트
       - ./data:/app/data

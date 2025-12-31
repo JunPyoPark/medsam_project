@@ -18,5 +18,5 @@ python -c "import sam2; print('✅ sam2 module found')" 2>/dev/null || echo "⚠
 
 echo "🌐 Starting API server..."
 cd /app
-uvicorn medsam_api_server.main:app --host 0.0.0.0 --port 8000 --log-config /app/medsam_api_server/logging.conf
+uvicorn medsam_api_server.main:app --host 0.0.0.0 --port 8000 --workers 4 --log-config /app/medsam_api_server/logging.conf
 
