@@ -136,8 +136,15 @@ const SliceViewer = ({ niftiData, currentSlice, maskOverlay, boundingBox, onSlic
                 }
                 ctx.drawImage(bmp, 0, 0);
             });
+        } else if (bitmaps.mask) {
+            // Render 3D Volume Mask from Worker
+            if (canvas.width !== bitmaps.mask.width || canvas.height !== bitmaps.mask.height) {
+                canvas.width = bitmaps.mask.width;
+                canvas.height = bitmaps.mask.height;
+            }
+            ctx.drawImage(bitmaps.mask, 0, 0);
         }
-    }, [maskOverlay]);
+    }, [maskOverlay, bitmaps.mask]);
 
     // 7. Render UI Layer
     useEffect(() => {

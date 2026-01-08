@@ -135,7 +135,8 @@ def propagate_3d_mask_task(
     reference_slice: int,
     start_slice: int,
     end_slice: int,
-    reference_mask_b64: str
+    reference_mask_b64: str,
+    window_level: Optional[list] = None
 ) -> Dict[str, Any]:
     """
     3D 마스크 전파 작업
@@ -204,6 +205,7 @@ def propagate_3d_mask_task(
             start_slice=start_slice,
             end_slice=end_slice,
             reference_mask_b64=reference_mask_b64,
+            window_level=window_level,
             progress_callback=progress_callback
         )
         processing_time = time.time() - start_time

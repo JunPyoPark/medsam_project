@@ -347,7 +347,8 @@ async def propagate_3d_mask(job_id: str, request: PropagationRequest):
             reference_slice=request.reference_slice,
             start_slice=request.start_slice,
             end_slice=request.end_slice,
-            reference_mask_b64=request.mask_data
+            reference_mask_b64=request.mask_data,
+            window_level=request.window_level
         )
         
         # 메타데이터 업데이트

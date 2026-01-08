@@ -99,10 +99,18 @@ self.onmessage = async (e) => {
                 bitmap = await generateSliceBitmap(niftiHeader, niftiImage, sliceIndex, windowWidth, windowLevel, isAuto);
             }
 
+            let maskBitmap = null;
+            if (maskHeader && maskImage) {
+                maskBitmap = await generateMaskBitmap(maskHeader, maskImage, sliceIndex);
+            }
+
+            const transferList = [bitmap];
+            if (maskBitmap) transferList.push(maskBitmap);
+
             self.postMessage({
                 type: 'SLICE_READY',
-                payload: { sliceIndex, baseBitmap: bitmap, maskBitmap: null }
-            }, [bitmap]);
+                payload: { sliceIndex, baseBitmap: bitmap, maskBitmap }
+            }, transferList);
 
         } catch (err) {
             console.error(err);

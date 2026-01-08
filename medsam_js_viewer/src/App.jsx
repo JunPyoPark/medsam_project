@@ -196,7 +196,14 @@ function App() {
 
       addLog(`Sending BBox: ${JSON.stringify(safeBbox)} `);
 
-      await triggerSegmentation(jobId, safeSlice, safeBbox);
+      // Prepare Window Level if not auto
+      let windowLevelData = null;
+      if (!isAutoWindow) {
+        windowLevelData = [windowWidth, windowLevel];
+        addLog(`Sending Window Level: [${windowWidth}, ${windowLevel}]`);
+      }
+
+      await triggerSegmentation(jobId, safeSlice, safeBbox, windowLevelData);
 
       pollJobStatus(jobId, async () => {
         addLog('2D Segmentation completed. Fetching result...');
@@ -309,7 +316,14 @@ function App() {
         throw new Error("No mask available for propagation. Please segment a slice first.");
       }
 
-      await triggerPropagation(jobId, startSlice, endSlice, refSlice, maskBase64);
+      // Prepare Window Level if not auto
+      let windowLevelData = null;
+      if (!isAutoWindow) {
+        windowLevelData = [windowWidth, windowLevel];
+        addLog(`Sending Window Level for 3D: [${windowWidth}, ${windowLevel}]`);
+      }
+
+      await triggerPropagation(jobId, startSlice, endSlice, refSlice, maskBase64, windowLevelData);
 
       pollJobStatus(jobId, async (status) => {
         addLog('3D Propagation completed!');

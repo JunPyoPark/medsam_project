@@ -18,11 +18,17 @@ export const createJob = async (file) => {
     return response.data;
 };
 
-export const triggerSegmentation = async (jobId, sliceIndex, bbox) => {
-    const response = await api.post(`/api/v1/jobs/${jobId}/initial-mask`, {
+export const triggerSegmentation = async (jobId, sliceIndex, bbox, windowLevel = null) => {
+    const payload = {
         slice_index: sliceIndex,
         bounding_box: bbox,
-    });
+    };
+
+    if (windowLevel) {
+        payload.window_level = windowLevel;
+    }
+
+    const response = await api.post(`/api/v1/jobs/${jobId}/initial-mask`, payload);
     return response.data;
 };
 
@@ -36,13 +42,19 @@ export const getJobResult = async (jobId) => {
     return response.data;
 };
 
-export const triggerPropagation = async (jobId, startSlice, endSlice, referenceSlice, maskData) => {
-    const response = await api.post(`/api/v1/jobs/${jobId}/propagate`, {
+export const triggerPropagation = async (jobId, startSlice, endSlice, referenceSlice, maskData, windowLevel = null) => {
+    const payload = {
         start_slice: startSlice,
         end_slice: endSlice,
         reference_slice: referenceSlice,
         mask_data: maskData,
-    });
+    };
+
+    if (windowLevel) {
+        payload.window_level = windowLevel;
+    }
+
+    const response = await api.post(`/api/v1/jobs/${jobId}/propagate`, payload);
     return response.data;
 };
 export const getJobResultBlob = async (jobId) => {

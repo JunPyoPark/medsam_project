@@ -203,6 +203,7 @@ class MedSAM2InferenceEngine:
     
     def propagate_3d_from_mask(self, job_id: str, volume_path: str, reference_slice: int, 
                               start_slice: int, end_slice: int, reference_mask_b64: str,
+                              window_level: Optional[List[float]] = None,
                               progress_callback: Optional[callable] = None) -> Dict[str, Any]:
         """2D 마스크로부터 3D 전파 실행 (MedSAM2 Video Predictor 원본 방식)"""
         try:
@@ -229,9 +230,18 @@ class MedSAM2InferenceEngine:
             reference_mask = np.array(mask_img) > 0
             logger.info(f"Reference mask shape: {reference_mask.shape}")
             
-            # 4. 볼륨 전처리 (MedSAM2 원본 방식)
-            # DICOM windowing (1-99 percentile 사용)
-            volume_clipped = np.clip(volume, np.percentile(volume, 1), np.percentile(volume, 99))
+            # 4. 볼륨 전처리 (MedSAM2 원본 방식 + Custom WW/WL)
+            if window_level:
+                # 사용자 지정 윈도우 레벨 사용
+                window, level = window_level
+                min_val = level - window / 2
+                max_val = level + window / 2
+                volume_clipped = np.clip(volume, min_val, max_val)
+                logger.info(f"Applied custom window/level for 3D propagation: {window_level}")
+            else:
+                # 기본값: 1-99 percentile clipping (기존 로직)
+                volume_clipped = np.clip(volume, np.percentile(volume, 1), np.percentile(volume, 99))
+                
             volume_normalized = (volume_clipped - np.min(volume_clipped)) / (np.max(volume_clipped) - np.min(volume_clipped)) * 255.0
             volume_uint8 = np.uint8(volume_normalized)
             

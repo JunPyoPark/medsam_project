@@ -87,6 +87,13 @@ class PropagationRequest(BaseModel):
     start_slice: int = Field(..., ge=0, description="시작 슬라이스 인덱스")
     end_slice: int = Field(..., ge=0, description="끝 슬라이스 인덱스")
     mask_data: str = Field(..., description="Base64 인코딩된 2D 마스크 데이터")
+    window_level: Optional[List[float]] = Field(None, description="윈도우 레벨 [window, level]")
+    
+    @validator('window_level')
+    def validate_window_level(cls, v):
+        if v is not None and len(v) != 2:
+            raise ValueError('window_level must be a list of 2 values [window, level]')
+        return v
     
     @validator('end_slice')
     def end_slice_must_be_greater_than_start(cls, v, values):
