@@ -64,10 +64,39 @@ self.onmessage = async (e) => {
 
             if (mergedVolume) {
                 // Super fast path: Slice from pre-calculated volume
-                bitmap = await generateBitmapFromCache(mergedVolume, niftiHeader, sliceIndex);
+                // Note: Merged volume pre-calc currently bakes in normalization. 
+                // If we want dynamic WW/WL on merged volume, we need to re-calc or adjust shader.
+                // For now, let's fallback to generateSliceBitmap if not auto, OR update generateBitmapFromCache?
+                // Actually, mergedVolume logic in preCalculateMergedVolume uses min/max of the WHOLE volume.
+                // If we want per-slice WW/WL or dynamic, we should probably not use the baked mergedVolume for the base layer,
+                // OR we need to re-generate the base layer part.
+
+                // For simplicity and correctness with WW/WL, let's use the standard path if we are not in default auto mode,
+                // OR just use generateSliceBitmap for the base layer always and overlay mask separately?
+                // The current architecture returns baseBitmap and maskBitmap separately in the non-merged path?
+                // Wait, generateSliceBitmap returns just the base image.
+                // The GET_SLICE handler returns { baseBitmap, maskBitmap }.
+                // If mergedVolume is used, it returns ONE bitmap with both?
+                // Let's check generateBitmapFromCache.
+
+                // generateBitmapFromCache returns a single bitmap from the merged volume.
+                // If we want to support WW/WL, we can't use the pre-baked merged volume easily without re-baking.
+                // Re-baking whole volume on every WW/WL change is too slow.
+                // So, if we are changing WW/WL, we should probably use the per-slice generation.
+
+                // Let's force the dynamic path if we are not in the initial state?
+                // Or better, let's just use generateSliceBitmap which is fast enough for 2D slice viewing.
+                // The "mergedVolume" optimization was for "Single File" speed, likely for 3D or scrolling.
+
+                // For this task, let's prioritize correctness of WW/WL.
+                // We will use generateSliceBitmap.
+
+                const { windowWidth, windowLevel, isAuto } = payload;
+                bitmap = await generateSliceBitmap(niftiHeader, niftiImage, sliceIndex, windowWidth, windowLevel, isAuto);
             } else {
                 // Fallback / Base only path
-                bitmap = await generateSliceBitmap(niftiHeader, niftiImage, sliceIndex);
+                const { windowWidth, windowLevel, isAuto } = payload;
+                bitmap = await generateSliceBitmap(niftiHeader, niftiImage, sliceIndex, windowWidth, windowLevel, isAuto);
             }
 
             self.postMessage({
@@ -164,7 +193,7 @@ const getTypedData = (header, image) => {
     return new Uint8Array(image);
 };
 
-const generateSliceBitmap = async (header, image, sliceIndex) => {
+const generateSliceBitmap = async (header, image, sliceIndex, windowWidth, windowLevel, isAuto) => {
     const dims = header.dims;
     const xDim = dims[1];
     const yDim = dims[2];
@@ -178,21 +207,42 @@ const generateSliceBitmap = async (header, image, sliceIndex) => {
 
     const sliceData = typedData.subarray(offset, offset + sliceSize);
 
-    // Normalize
-    let min = Infinity;
-    let max = -Infinity;
-    for (let i = 0; i < sliceData.length; i++) {
-        const val = sliceData[i];
-        if (val < min) min = val;
-        if (val > max) max = val;
+    let min, max, range;
+
+    if (isAuto) {
+        // Normalize
+        min = Infinity;
+        max = -Infinity;
+        for (let i = 0; i < sliceData.length; i++) {
+            const val = sliceData[i];
+            if (val < min) min = val;
+            if (val > max) max = val;
+        }
+        range = max - min || 1;
+    } else {
+        // WW/WL Logic
+        // lower = level - width / 2
+        // upper = level + width / 2
+        // val = (val - lower) / (upper - lower) * 255
+        const widthVal = windowWidth || 1;
+        const levelVal = windowLevel || 0;
+        min = levelVal - (widthVal / 2);
+        max = levelVal + (widthVal / 2);
+        range = max - min || 1;
     }
-    const range = max - min || 1;
 
     const rgbaData = new Uint8ClampedArray(width * height * 4);
     const buf32 = new Uint32Array(rgbaData.buffer);
 
     for (let i = 0; i < sliceData.length; i++) {
-        const val = Math.floor(((sliceData[i] - min) / range) * 255);
+        let val = sliceData[i];
+
+        // Apply Windowing
+        if (val < min) val = min;
+        else if (val > max) val = max;
+
+        val = Math.floor(((val - min) / range) * 255);
+
         buf32[i] = (255 << 24) | (val << 16) | (val << 8) | val;
     }
 

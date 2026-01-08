@@ -18,7 +18,13 @@ const ControlPanel = ({
     editMode,
     setEditMode,
     brushSize,
-    setBrushSize
+    setBrushSize,
+    windowWidth,
+    setWindowWidth,
+    windowLevel,
+    setWindowLevel,
+    isAutoWindow,
+    setIsAutoWindow
 }) => {
     if (!hasNifti) return null;
 
@@ -89,6 +95,82 @@ const ControlPanel = ({
                     <Play className="w-4 h-4 fill-current" />
                     Segment Current Slice
                 </button>
+            </div>
+
+            {/* Windowing Card */}
+            <div className="glass-panel p-5 space-y-4">
+                <div className="flex items-center justify-between text-primary-300 mb-2">
+                    <div className="flex items-center gap-2">
+                        <Activity className="w-5 h-5" />
+                        <h3 className="font-semibold">Windowing</h3>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <span className="text-xs text-slate-400">Auto</span>
+                        <button
+                            onClick={() => setIsAutoWindow(!isAutoWindow)}
+                            className={`w-10 h-5 rounded-full relative transition-colors duration-200 ${isAutoWindow ? 'bg-primary-500' : 'bg-slate-700'}`}
+                        >
+                            <div className={`absolute top-1 left-1 w-3 h-3 bg-white rounded-full transition-transform duration-200 ${isAutoWindow ? 'translate-x-5' : 'translate-x-0'}`} />
+                        </button>
+                    </div>
+                </div>
+
+                {!isAutoWindow && (
+                    <div className="space-y-4 animate-fade-in">
+                        {/* Sliders */}
+                        <div className="space-y-3">
+                            <div className="space-y-1">
+                                <div className="flex justify-between text-xs text-slate-400">
+                                    <span>Width (Contrast)</span>
+                                    <span>{windowWidth}</span>
+                                </div>
+                                <input
+                                    type="range"
+                                    min="1"
+                                    max="4000"
+                                    value={windowWidth}
+                                    onChange={(e) => setWindowWidth(parseInt(e.target.value))}
+                                    className="w-full h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-primary-500"
+                                />
+                            </div>
+                            <div className="space-y-1">
+                                <div className="flex justify-between text-xs text-slate-400">
+                                    <span>Level (Brightness)</span>
+                                    <span>{windowLevel}</span>
+                                </div>
+                                <input
+                                    type="range"
+                                    min="-1000"
+                                    max="1000"
+                                    value={windowLevel}
+                                    onChange={(e) => setWindowLevel(parseInt(e.target.value))}
+                                    className="w-full h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-primary-500"
+                                />
+                            </div>
+                        </div>
+
+                        {/* Presets */}
+                        <div className="grid grid-cols-2 gap-2">
+                            {[
+                                { label: 'Abdomen', w: 400, l: 40 },
+                                { label: 'Lung', w: 1500, l: -600 },
+                                { label: 'Bone', w: 1800, l: 400 },
+                                { label: 'Brain', w: 80, l: 40 }
+                            ].map(preset => (
+                                <button
+                                    key={preset.label}
+                                    onClick={() => {
+                                        setWindowWidth(preset.w);
+                                        setWindowLevel(preset.l);
+                                    }}
+                                    className="px-2 py-1.5 text-xs font-medium text-slate-400 bg-slate-950/30 border border-white/5 rounded hover:bg-white/5 hover:text-white transition-colors"
+                                >
+                                    {preset.label}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                )}
             </div>
 
             {/* 3D Propagation Card */}

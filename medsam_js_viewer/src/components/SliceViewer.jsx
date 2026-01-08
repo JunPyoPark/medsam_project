@@ -2,7 +2,7 @@
 import React, { useRef, useEffect, useState, useMemo } from 'react';
 import NiftiWorker from '../workers/niftiWorker?worker'; // Vite worker import
 
-const SliceViewer = ({ niftiData, currentSlice, maskOverlay, boundingBox, onSliceChange, onBBoxDrawn, maskVolume, editMode, brushSize, onMaskChange }) => {
+const SliceViewer = ({ niftiData, currentSlice, maskOverlay, boundingBox, onSliceChange, onBBoxDrawn, maskVolume, editMode, brushSize, onMaskChange, windowWidth, windowLevel, isAutoWindow }) => {
     const containerRef = useRef(null);
     const baseCanvasRef = useRef(null);
     const maskCanvasRef = useRef(null);
@@ -85,9 +85,14 @@ const SliceViewer = ({ niftiData, currentSlice, maskOverlay, boundingBox, onSlic
 
         workerRef.current.postMessage({
             type: 'GET_SLICE',
-            payload: { sliceIndex: currentSlice }
+            payload: {
+                sliceIndex: currentSlice,
+                windowWidth,
+                windowLevel,
+                isAuto: isAutoWindow
+            }
         });
-    }, [currentSlice, isWorkerReady, maskVolume]); // Re-request if mask volume changes
+    }, [currentSlice, isWorkerReady, maskVolume, windowWidth, windowLevel, isAutoWindow]); // Re-request if mask volume changes
 
 
     // 5. Render Base Layer

@@ -36,6 +36,11 @@ function App() {
   const [editMode, setEditMode] = useState('bbox'); // 'view', 'bbox', 'brush', 'eraser'
   const [brushSize, setBrushSize] = useState(10);
 
+  // Windowing State
+  const [windowWidth, setWindowWidth] = useState(400);
+  const [windowLevel, setWindowLevel] = useState(40);
+  const [isAutoWindow, setIsAutoWindow] = useState(true);
+
   const addLog = (message) => {
     const time = new Date().toLocaleTimeString();
     setLogs(prev => [...prev, { time, message }]);
@@ -397,6 +402,10 @@ function App() {
                     [currentSlice]: newMaskData
                   }));
                 }}
+                // Windowing Props
+                windowWidth={windowWidth}
+                windowLevel={windowLevel}
+                isAutoWindow={isAutoWindow}
               />
             </div>
           )}
@@ -433,6 +442,13 @@ function App() {
               setEditMode={setEditMode}
               brushSize={brushSize}
               setBrushSize={setBrushSize}
+              // Windowing Props
+              windowWidth={windowWidth}
+              setWindowWidth={setWindowWidth}
+              windowLevel={windowLevel}
+              setWindowLevel={setWindowLevel}
+              isAutoWindow={isAutoWindow}
+              setIsAutoWindow={setIsAutoWindow}
             />
 
             <div className="pt-4 border-t border-white/10">
